@@ -201,11 +201,18 @@ class DBManager:
         articulo = self.cursor.fetchone()
         return articulo
     
-    def update_articulo(self, articulo):
+    def update_articulo(self, articulo, articuloDetail):
         query = "UPDATE articulos SET descripcion=%s, precio_unitario=%s, precio_venta=%s, descuento=%s, puntos=%s WHERE articulo_id=%s"
         values = (articulo['descripcion'], articulo['precio_unitario'], articulo['precio_venta'], articulo['descuento'], articulo['puntos'], articulo['articulo_id'])
         self.cursor.execute(query, values)
         self.conn.commit()
+        
+        if articuloDetail:
+            proveedor_id = self.get_proveedor_id_by_description(articuloDetail['proveedor_id'])
+            query2 = "UPDATE det_articulo SET proveedor_id = %s, precio = %s, existencia = %s WHERE articulo_id = %s"
+            values2 = (proveedor_id, articuloDetail['precio'], articuloDetail['existencia'], articuloDetail['articulo_id'])
+            self.cursor.execute(query2, values2)
+            self.conn.commit()
     
     def delete_articulo(self, articulo_id):
         query = "DELETE FROM articulos WHERE articulo_id = %s"
@@ -213,6 +220,8 @@ class DBManager:
         self.conn.commit()
     
     def save_articulo(self, articulo):
+        #valor = articulo['descuento'].strip()
+        #descuento = int(valor) if valor else None
         query = "INSERT INTO articulos (articulo_id, descripcion, precio_unitario, precio_venta, descuento, puntos ) VALUES (%s, %s, %s, %s, %s, %s)"
         values = (articulo['articulo_id'], articulo['descripcion'], articulo['precio_unitario'], articulo['precio_venta'], articulo['descuento'], articulo['puntos'])
         self.cursor.execute(query, values)
@@ -229,14 +238,17 @@ class DBManager:
     
     def add_articulo_detalle(self, articuloDetail):
         proveedor_id = self.get_proveedor_id_by_description(articuloDetail['proveedor_id'])
-
         stock = int(articuloDetail['existencia'])
-
         query = "INSERT INTO det_articulo (proveedor_id, articulo_id, precio, existencia) VALUES (%s, %s, %s, %s) RETURNING det_id_articulo;"
-        values = (proveedor_id, articuloDetail['articulo_id'], articuloDetail['precio'], articuloDetail['existencia'])
-        
+        values = (proveedor_id, articuloDetail['articulo_id'], articuloDetail['precio'], articuloDetail['existencia'])      
         self.cursor.execute(query, values)
         self.conn.commit()
+
+    def get_articulo_details(self, articulo_id):
+        query = "SELECT proveedor_id, existencia FROM det_articulo WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        articuloDetail = self.cursor.fetchone()
+        return articuloDetail
 
 class App:
     def __init__(self, root, username=None):    
@@ -1259,9 +1271,10 @@ class ArticuloApp:
             messagebox.showerror("Error", "El precio de venta debe ser un número positivo.")
             return
         
-        if not re.match(r'^\d+$', articulo['descuento']):
-            messagebox.showerror("Error", "El descuento debe ser un número positivo.")
-            return
+        if articulo['descuento'].strip():
+            if not re.match(r'^\d+$', articulo['descuento']):
+                messagebox.showerror("Error", "El descuento debe ser un número positivo.")
+                return
         
         if not re.match(r'^\d+$', articulo['puntos']):
             messagebox.showerror("Error", "Los puntos deben de ser un número positivo.")
@@ -1317,6 +1330,12 @@ class ArticuloApp:
             self.ent_descuento.insert(0, articulo[4])
             self.ent_puntos.insert(0, articulo[5])
 
+            details = self.db.get_articulo_details(articulo[0])
+            proveedor_id = self.db.search_proveedor_by_id(details[0])
+            
+            self.combo_username.insert(0, proveedor_id[1])
+            self.ent_stock.insert(0, details[1])
+
             self.disable_buttons([self.btn_new, self.btn_insert])
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
             self.enable_entries()
@@ -1331,7 +1350,7 @@ class ArticuloApp:
             return
         
         articulo = {
-            'articulo_id': self.ent_customer_id.get(),
+            'articulo_id': self.ent_articulo_id.get(),
             'descripcion': self.ent_descripcion.get(),
             'precio_unitario': self.ent_preciouni.get(),
             'precio_venta': self.ent_precioven.get(),
@@ -1340,7 +1359,14 @@ class ArticuloApp:
             
         }
         
-        self.db.update_articulo(articulo)
+        articuloDetail = {            
+            'proveedor_id':self.combo_username.get(),
+            'articulo_id':self.ent_articulo_id.get(),
+            'precio':self.ent_precioven.get(),
+            'existencia':self.ent_stock.get()
+        }
+        
+        self.db.update_articulo(articulo, articuloDetail)
         messagebox.showinfo("Éxito", "Articulo actualizado con éxito.")
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel])
@@ -1373,7 +1399,7 @@ class ArticuloApp:
         if (
             not self.ent_preciouni.get().isdigit()
             or not self.ent_precioven.get().isdigit()
-            or not self.ent_descuento.get().isdigit()
+            #or not self.ent_descuento.get().isdigit()
             or not self.ent_puntos.get().isdigit()
         ):
             messagebox.showerror("Error, ingrese solo numeros")
@@ -1395,6 +1421,7 @@ class ArticuloApp:
         self.ent_preciouni.delete(0, END)
         self.ent_precioven.delete(0, END)
         #self.ent_user_id.delete(0, END)
+        self.combo_username.delete(0, END)
         self.ent_descuento.delete(0, END)
         self.ent_puntos.delete(0, END)
         self.ent_stock.delete(0, END)
