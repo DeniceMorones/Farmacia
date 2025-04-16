@@ -5,6 +5,7 @@ import psycopg2
 import datetime
 import re
 from psycopg2 import Error
+iva = 16
 #COLORES:
 #86BBD8 (AZUL BOTON)
 #03012C (AZULTITULOS GRANDES)
@@ -1459,6 +1460,399 @@ class ArticuloApp:
         proveedores = self.db.get_all_proveedores()
         proveedores_names = [proveedor[1] for proveedor in proveedores]
         self.combo_username['values'] = proveedores_names
+        
+class VentaApp:
+    def __init__(self, root, db, user_id, username):
+        self.root = root
+        self.root.title("Ventas")
+        self.db = db
+        self.current_customer_id = None
+        self.user_id = user_id
+        self.username = username  
+
+        self.root.configure(bg="#ffffff")
+        self.font = tkfont.Font(family="Helvetica", size=12)
+        self.button_font = tkfont.Font(family="Helvetica", size=12, weight="bold")
+        
+        self.lbl_search_id = tk.Label(root, text="Buscar venta (ID):", font=self.font, bg="#ffffff")
+        self.lbl_search_id.place(x=20, y=2)  
+        self.ent_search_id = tk.Entry(root, font=self.font)
+        self.ent_search_id.place(x=200, y=2)
+        
+        self.btn_search = tk.Button(
+            root, 
+            text="Buscar", 
+            command=self.search_articulo, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white"
+        )
+        self.btn_search.place(x=450, y=2)
+
+        self.lbl_venta_id = tk.Label(root, text="Venta ID:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_venta_id.place(x=20, y=40)  
+        self.ent_venta_id = tk.Entry(root, font=self.font, state="readonly")
+        self.ent_venta_id.place(x=180, y=40) 
+
+        self.lbl_cliente = tk.Label(root, text="Cliente:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_cliente.place(x=20, y=80) 
+        self.combo_cliente = ttk.Combobox(root, font=self.font)
+        self.combo_cliente.place(x=180, y=80) 
+
+        self.lbl_usuario = tk.Label(root, text="Usuario:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_usuario.place(x=20, y=120)  
+        self.ent_usuario = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_usuario.place(x=180, y=120)
+        self.ent_usuario.insert(0, self.username)
+        
+        self.lbl_proveedor = tk.Label(root, text="Proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_proveedor.place(x=20, y=160) 
+        self.combo_proveedor = ttk.Combobox(root, font=self.font)
+        self.combo_proveedor.place(x=180, y=160) 
+        
+        self.lbl_articulo= tk.Label(root, text="Articulo:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_articulo.place(x=20, y=200)  
+        self.combo_articulo = ttk.Combobox(root, font=self.font)
+        self.combo_articulo.place(x=180, y=200) 
+        
+        self.lbl_cantidad = tk.Label(root, text="Cantidad", font=self.font, bg="#ffffff")
+        self.lbl_cantidad.place(x=20, y=240)  
+        self.ent_cantidad = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_cantidad.place(x=180, y=240)
+        
+        self.lbl_fecha = tk.Label(root, text="Fecha", font=self.font, bg="#ffffff")
+        self.lbl_fecha.place(x=20, y=280)  
+        self.ent_fecha = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_fecha.place(x=180, y=280)
+        
+        self.load_proveedor_data()
+
+        #como ID del proveedor
+        #self.lbl_user_id = tk.Label(root, text="ID proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
+        #self.lbl_user_id.place(x=20, y=240)  
+        #self.ent_user_id = tk.Entry(root, font=self.font, state="normal")
+        #self.ent_user_id.place(x=180, y=240)  
+        #self.ent_user_id.insert(0, self.user_id)
+        
+        self.lbl_subtotal = tk.Label(root, text="Subtotal:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_subtotal.place(x=20, y=320)  
+        self.ent_subtotal = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_subtotal.place(x=180, y=320)
+        
+        self.lbl_total = tk.Label(root, text="Total:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_total.place(x=20, y=360)  
+        self.ent_total = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_total.place(x=180, y=360)
+        
+        self.lbl_iva = tk.Label(root, text="IVA:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_iva.place(x=20, y=400)  
+        self.ent_iva= tk.Entry(root, font=self.font, state="disabled")
+        self.ent_iva.place(x=180, y=400)    
+
+        self.btn_insert = tk.Button(
+            root, 
+            text="Guardar", 
+            command=self.insert, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white", 
+            state="disabled"
+        )
+        self.btn_insert.place(x=20, y=440)  
+
+        self.btn_cancel = tk.Button(
+            root, 
+            text="Cancelar", 
+            command=self.cancel, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white", 
+            state="disabled"
+        )
+        self.btn_cancel.place(x=140, y=440) 
+
+        self.btn_new = tk.Button(
+            root, 
+            text="Nuevo", 
+            command=self.new_venta, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white"
+        )
+        self.btn_new.place(x=260, y=440)    
+
+        self.btn_edit = tk.Button(
+            root, 
+            text="Editar", 
+            command=self.edit, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white", 
+            state="disabled"
+        )
+        self.btn_edit.place(x=360, y=440)  
+
+        self.btn_delete = tk.Button(
+            root, 
+            text="Eliminar", 
+            command=self.delete, 
+            font=self.button_font, 
+            bg="#33658A", 
+            fg="white", 
+            state="disabled"
+        )
+        self.btn_delete.place(x=460, y=440)  
+
+        self.lbl_carrito_articulos=tk.Listbox(root, font=self.font)
+        self.lbl_carrito_articulos.place(x=20, y=480)
+        self.btn_agregar_articulo = tk.Button(
+            root, 
+            text="Agregar", 
+            command=self.insert_detalle, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white"
+        )
+        self.btn_agregar_articulo.place(x=20, y=800)
+
+        self.setup_buttons()  
+    
+    def validate_name(self, name):
+        """Valida que el nombre solo contenga letras y espacios"""
+        if not name.strip():  
+            return False
+        return name.replace(" ", "").isalpha()  
+    
+    def setup_buttons(self):
+        if self.username in ["gerente", "cajero"]:
+            self.btn_edit.config(state="disabled")
+            self.btn_delete.config(state="disabled")
+
+        self.btn_new.config(state="normal")
+        self.btn_search.config(state="normal")
+        self.btn_insert.config(state="normal")
+        self.btn_cancel.config(state="normal")
+
+    def new_venta(self):
+        self.clear_entries()
+        self.enable_entries()
+        self.enable_buttons([self.btn_insert, self.btn_cancel])
+        self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete])
+
+        self.current_venta_id = self.db.get_next_venta_id()
+        self.ent_venta_id.insert(0, self.current_venta_id)
+
+    def insert(self):
+        if not self.validate_fields():
+            return
+
+        venta = {
+            'venta_id': self.ent_venta_id.get(),
+            'cliente': self.combo_cliente.get(),
+            'usuario': self.ent_usuario.get(),
+            'articulo': self.combo_articulo.get(),            
+            'cantidad': self.ent_cantidad.get(),
+            'fecha': self.ent_fecha.get(),
+            'total': self.ent_total.get()
+        }
+        
+        if not re.match(r'^\d+$', venta['cantidad']):
+            messagebox.showerror("Error", "La cantidad debe ser un número positivo.")
+            return
+        
+        existing_venta = self.db.search_venta_by_id(venta['venta_id'])
+        
+        if not existing_venta:
+            self.db.save_venta(venta)
+            messagebox.showinfo("Éxito", "Venta realizada con éxito.")
+            
+        ventaDetail = {            
+            'folio_venta':self.ent_venta_id.get(),
+            'articulo_id':self.combo_articulo.get(),
+            'cantidad':self.ent_cantidad.get(),
+            'cliente_id':self.combo_cliente.get()
+        }
+        
+        ventaResponse = self.db.add_articulo_detalle(ventaDetail)
+        #COMPLETAR PARA LISTBOX
+        
+        self.db.add_venta_detalle(ventaDetail)
+        messagebox.showinfo("Éxito", "Venta y detalle insertados con éxito.")
+    
+        self.clear_entries()
+        self.disable_entries()
+        self.disable_buttons([self.btn_insert, self.btn_cancel])
+        self.enable_buttons([self.btn_new])
+
+    def cancel(self):
+        self.clear_entries()
+        self.disable_entries()
+        self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
+        self.enable_buttons([self.btn_new])
+        self.ent_search_id["state"] = "normal"
+
+    def search_articulo(self):
+        articulo_id_or_name = self.ent_search_id.get()
+        if articulo_id_or_name.isdigit():  
+            articulo = self.db.search_articulo_by_id(articulo_id_or_name)
+        else:  
+            articulo = self.db.search_articulo_by_name(articulo_id_or_name)
+        
+        if articulo:
+            self.ent_articulo_id.delete(0, END)
+            self.ent_descripcion.delete(0, END)
+            self.ent_preciouni.delete(0, END)
+            self.ent_precioven.delete(0, END)
+            self.ent_descuento.delete(0, END)
+            self.ent_puntos.delete(0, END)
+
+            self.ent_articulo_id.insert(0, articulo[0])
+            self.ent_descripcion.insert(0, articulo[1])
+            self.ent_preciouni.insert(0, articulo[2])
+            self.ent_precioven.insert(0, articulo[3])
+            self.ent_descuento.insert(0, articulo[4])
+            self.ent_puntos.insert(0, articulo[5])
+
+            details = self.db.get_articulo_details(articulo[0])
+            proveedor_id = self.db.search_proveedor_by_id(details[0])
+            
+            self.combo_username.insert(0, proveedor_id[1])
+            self.ent_stock.insert(0, details[1])
+
+            self.disable_buttons([self.btn_new, self.btn_insert])
+            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
+            self.enable_entries()
+            self.ent_search_id["state"] = "normal"
+            
+            self.btn_edit["state"] = "normal"
+        else:
+            messagebox.showinfo("Error", "Articulo no encontrado.")
+
+    def edit(self):
+        if not self.validate_fields():
+            return
+        
+        articulo = {
+            'articulo_id': self.ent_articulo_id.get(),
+            'descripcion': self.ent_descripcion.get(),
+            'precio_unitario': self.ent_preciouni.get(),
+            'precio_venta': self.ent_precioven.get(),
+            'descuento': self.ent_descuento.get(),
+            'puntos':self.ent_puntos.get()
+            
+        }
+        
+        articuloDetail = {            
+            'proveedor_id':self.combo_username.get(),
+            'articulo_id':self.ent_articulo_id.get(),
+            'precio':self.ent_precioven.get(),
+            'existencia':self.ent_stock.get()
+        }
+        
+        self.db.update_articulo(articulo, articuloDetail)
+        messagebox.showinfo("Éxito", "Articulo actualizado con éxito.")
+        self.disable_entries()
+        self.disable_buttons([self.btn_insert, self.btn_cancel])
+        self.enable_buttons([self.btn_new])
+        self.clear_entries()
+
+    def delete(self):
+        if not self.ent_articulo_id.get():
+            messagebox.showerror("Error", "Debe ingresar un ID de articulo.")
+            return
+        articulo_id = self.ent_articulo_id.get()
+        self.db.delete_articulo(articulo_id)
+        messagebox.showinfo("Éxito", "Articulo eliminado con éxito.")
+        self.clear_entries()
+        self.disable_entries()
+        self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
+        self.enable_buttons([self.btn_new])
+
+    def validate_fields(self):
+        if (
+            not self.ent_articulo_id.get()
+            or not self.ent_descripcion.get()
+            or not self.ent_preciouni.get()
+            or not self.ent_precioven.get()
+            #or not self.ent_descuento.get()
+            or not self.ent_puntos.get()
+        ):
+            messagebox.showerror("Error", "Todos los campos son obligatorios.")
+            return False
+        if (
+            not self.ent_preciouni.get().isdigit()
+            or not self.ent_precioven.get().isdigit()
+            #or not self.ent_descuento.get().isdigit()
+            or not self.ent_puntos.get().isdigit()
+        ):
+            messagebox.showerror("Error, ingrese solo numeros")
+            return False
+        
+        return True
+
+    def enable_buttons(self, buttons):
+        for button in buttons:
+            button["state"] = "normal"
+
+    def disable_buttons(self, buttons):
+        for button in buttons:
+            button["state"] = "disabled"
+
+    def clear_entries(self):
+        self.ent_venta_id.delete(0, END)
+        self.combo_cliente.delete(0, END)
+        self.ent_usuario.delete(0, END)
+        self.combo_articulo.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+        self.ent_cantidad.delete(0, END)
+        self.ent_subtotal.delete(0, END)
+        self.ent_total.delete(0, END)
+        self.ent_iva.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+
+    def enable_entries(self):
+        self.ent_venta_id["state"] = "normal"
+        self.combo_cliente["state"] = "normal"
+        self.ent_usuario["state"] = "normal"
+        self.combo_articulo["state"] = "normal"
+        #self.ent_user_id["state"] = "normal"
+        self.ent_cantidad["state"] = "normal"
+        self.ent_subtotal["state"] = "disabled"
+        self.ent_total["state"] = "disabled"
+        self.ent_iva['state'] = "disabled"
+
+    def disable_entries(self):
+        self.ent_venta_id["state"] = "disabled"
+        self.combo_cliente["state"] = "disabled"
+        self.ent_usuario["state"] = "disabled"
+        self.combo_articulo["state"] = "disabled"
+        #self.ent_user_id["state"] = "disabled"
+        self.ent_cantidad["state"] = "disabled"
+        self.ent_subtotal["state"] = "disabled"
+        self.ent_total["state"] = "disabled"
+        self.ent_iva['state'] = "disabled"
+
+    def open_venta_menu(self):
+            venta_window = tk.Tk()
+            venta_window.title("Menú de Ventas")
+            venta_window.geometry("600x600")
+            venta_app = VentaApp(venta_window, self.db, self.user_id, self.username)
+            
+            venta_window.mainloop()
+    
+    def load_articulo_data(self):
+        articulos = self.db.get_all_articulos()
+        
+    
+    def load_cliente_data(self):
+        clientes = self.db.get_all_clientes()
+        clientes_names = [cliente[2] for cliente in clientes]
+        self.combo_cliente['values'] = clientes_names
+    
+    def load_proveedor_data(self):
+        proveedores = self.db.get_all_proveedores()
+        proveedores_names = [proveedor[1] for proveedor in proveedores]
+        self.combo_proveedor['values'] = proveedores_names
 
 class LoginWindow:
     def __init__(self, root, db):
@@ -1627,7 +2021,7 @@ class LoginWindow:
             venta_button = tk.Button(
                 button_frame, 
                 text="Ventas", 
-                command=self.open_user_menu, 
+                command=self.open_venta_menu, 
                 font=button_font, 
                 bg="#86BBD8", 
                 fg="white", 
@@ -1827,6 +2221,14 @@ class LoginWindow:
             articulo_app = ArticuloApp(articulo_window, self.db, self.user_id, self.username)
             
             articulo_window.mainloop()
+    
+    def open_venta_menu(self):
+            venta_window = tk.Tk()
+            venta_window.title("Menú de Ventas")
+            venta_window.geometry("600x900")
+            venta_app = VentaApp(venta_window, self.db, self.user_id, self.username)
+            
+            venta_window.mainloop()
 
     def show_login_window(self):
         login_window = tk.Tk()
