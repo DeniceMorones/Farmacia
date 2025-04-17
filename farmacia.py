@@ -6,12 +6,6 @@ import datetime
 import re
 from psycopg2 import Error
 iva = 16
-#COLORES:
-#86BBD8 (AZUL BOTON)
-#03012C (AZULTITULOS GRANDES)
-#daf1fa (AZUL MUY BAJITO BACKGROUND)
-#33658A (BOTONES O RESALTAR ALGO)
-#A88FAC (CONTRASTES)
 
 class DBManager:
     
@@ -126,6 +120,25 @@ class DBManager:
             return 1
         else:
             return max_id + 1
+    
+    def get_customer_name_by_id(self, cliente_id):
+        query = "SELECT nombre FROM clientes WHERE cliente_id = %s"
+        self.cursor.execute(query, (cliente_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
+    
+    def get_all_clientes(self):
+        try:
+            query = "SELECT * FROM clientes"
+            self.cursor.execute(query)
+            cliente = self.cursor.fetchall()
+            return cliente
+        except Exception as e:
+            print("Error while fetching all clientes:", e)
+            return None
         
     #PROVEEDOR
     #################################################################
@@ -244,6 +257,138 @@ class DBManager:
         values = (proveedor_id, articuloDetail['articulo_id'], articuloDetail['precio'], articuloDetail['existencia'])      
         self.cursor.execute(query, values)
         self.conn.commit()
+
+    def get_articulo_details(self, articulo_id):
+        query = "SELECT proveedor_id, existencia FROM det_articulo WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        articuloDetail = self.cursor.fetchone()
+        return articuloDetail
+    
+    def get_articulo_name_by_id(self, articulo_id):
+        query = "SELECT descripcion FROM articulos WHERE id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
+    
+    def get_articulo_stock_by_id(self, articulo_id):
+        query = "SELECT existencia FROM det_articulo WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return int(result[0])  
+        else:
+            return None
+    
+    def update_articulo_stock(self, articulo_id, difference):
+        current_stock = self.get_articulo_stock_by_id(articulo_id)
+
+        current_stock = int(current_stock) if current_stock is not None else 0
+
+        new_stock = current_stock - difference
+
+        if new_stock < 0:
+            messagebox.showerror("Error", "No hay suficientes piezas en stock.")
+            return
+
+        query = "UPDATE det_articulo SET existencia=%s WHERE articulo_id=%s"
+        values = (new_stock, articulo_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()
+    
+    def get_articulo_by_proveedor(self, name):
+        proveedor_id = self.get_proveedor_id_by_description(name)
+    
+        query = "SELECT articulo_id FROM det_articulo WHERE proveedor_id = %s"
+        self.cursor.execute(query, (proveedor_id,))
+        result = self.cursor.fetchall()
+        
+        articulo_ids = [r[0] for r in result]  
+        
+        if not articulo_ids:
+            return [] 
+        
+        placeholders = ','.join(['%s'] * len(articulo_ids))
+        query2 = f"SELECT descripcion FROM articulos WHERE articulo_id IN ({placeholders})"
+        
+        self.cursor.execute(query2, articulo_ids)
+        real_result = self.cursor.fetchall()
+        
+        return real_result
+    
+    #VENTAS
+    #################################################################
+
+    def search_venta_by_id(self, venta_id):
+        query = "SELECT * FROM ventas WHERE folio_venta = %s"
+        self.cursor.execute(query, (venta_id,))
+        venta = self.cursor.fetchone()
+        return venta
+
+    def search_articulo_by_name(self, articulo_name):
+        query = "SELECT * FROM articulos WHERE descripcion = %s"
+        self.cursor.execute(query, (articulo_name,))
+        articulo = self.cursor.fetchone()
+        return articulo
+    
+    def update_articulo(self, articulo, articuloDetail):
+        query = "UPDATE articulos SET descripcion=%s, precio_unitario=%s, precio_venta=%s, descuento=%s, puntos=%s WHERE articulo_id=%s"
+        values = (articulo['descripcion'], articulo['precio_unitario'], articulo['precio_venta'], articulo['descuento'], articulo['puntos'], articulo['articulo_id'])
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        
+        if articuloDetail:
+            proveedor_id = self.get_proveedor_id_by_description(articuloDetail['proveedor_id'])
+            query2 = "UPDATE det_articulo SET proveedor_id = %s, precio = %s, existencia = %s WHERE articulo_id = %s"
+            values2 = (proveedor_id, articuloDetail['precio'], articuloDetail['existencia'], articuloDetail['articulo_id'])
+            self.cursor.execute(query2, values2)
+            self.conn.commit()
+    
+    def delete_articulo(self, articulo_id):
+        query = "DELETE FROM articulos WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        self.conn.commit()
+    
+    def save_venta(self, venta):
+        #valor = articulo['descuento'].strip()
+        #descuento = int(valor) if valor else None
+        user_id = self.search_user_by_username(venta['usuario'])
+        query = "INSERT INTO ventas (folio_venta, user_id, fecha, total) VALUES (%s, %s, %s, %s)"
+        values = (venta['venta_id'], user_id, venta['fecha'], venta['total'])
+        self.cursor.execute(query, values)
+        self.conn.commit()
+    
+    def get_next_venta_id(self):
+        query = "SELECT MAX(folio_venta) FROM ventas"
+        self.cursor.execute(query)
+        max_id = self.cursor.fetchone()[0]
+        if max_id is None:
+            return 1
+        else:
+            return max_id + 1
+    
+    def add_venta_detalle(self, ventaDetail):
+        articulo_name = self.get_articulo_name_by_id(ventaDetail['articulo_id'])
+        cliente_name = self.get_customer_name_by_id(ventaDetail['cliente_id'])
+        cantidad = int(ventaDetail['cantidad'])
+        
+        query = "INSERT INTO det_venta (folio_venta, articulo_id, cantidad, cliente_id) VALUES (%s, %s, %s, %s) RETURNING det_id_venta;"
+        values = (ventaDetail['folio_venta'], ventaDetail['articulo_id'], cantidad, cliente_name)      
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        
+        venta_id = self.cursor.fetchone()[0]
+        
+        self.update_articulo_stock(ventaDetail['articulo_id'], cantidad)  
+
+        return {
+            'folio_venta': venta_id,
+            'articulo_name': articulo_name,
+            'cantidad': cantidad,
+            'cliente_name': cliente_name
+        }
 
     def get_articulo_details(self, articulo_id):
         query = "SELECT proveedor_id, existencia FROM det_articulo WHERE articulo_id = %s"
@@ -1468,7 +1613,10 @@ class VentaApp:
         self.db = db
         self.current_customer_id = None
         self.user_id = user_id
-        self.username = username  
+        self.username = username
+        self.selected_pieces = []
+        
+        print(self.username)  
 
         self.root.configure(bg="#ffffff")
         self.font = tkfont.Font(family="Helvetica", size=12)
@@ -1501,15 +1649,16 @@ class VentaApp:
 
         self.lbl_usuario = tk.Label(root, text="Usuario:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_usuario.place(x=20, y=120)  
-        self.ent_usuario = tk.Entry(root, font=self.font, state="disabled")
+        self.ent_usuario = tk.Entry(root, font=self.font, state="normal")
         self.ent_usuario.place(x=180, y=120)
         self.ent_usuario.insert(0, self.username)
         
         self.lbl_proveedor = tk.Label(root, text="Proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_proveedor.place(x=20, y=160) 
         self.combo_proveedor = ttk.Combobox(root, font=self.font)
-        self.combo_proveedor.place(x=180, y=160) 
-        
+        self.combo_proveedor.place(x=180, y=160)
+        self.combo_proveedor.bind("<<ComboboxSelected>>", lambda e: self.load_articulo_data())
+               
         self.lbl_articulo= tk.Label(root, text="Articulo:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_articulo.place(x=20, y=200)  
         self.combo_articulo = ttk.Combobox(root, font=self.font)
@@ -1525,7 +1674,9 @@ class VentaApp:
         self.ent_fecha = tk.Entry(root, font=self.font, state="disabled")
         self.ent_fecha.place(x=180, y=280)
         
+        self.load_cliente_data()
         self.load_proveedor_data()
+        #self.load_articulo_data()
 
         #como ID del proveedor
         #self.lbl_user_id = tk.Label(root, text="ID proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
@@ -1604,11 +1755,11 @@ class VentaApp:
         self.btn_delete.place(x=460, y=440)  
 
         self.lbl_carrito_articulos=tk.Listbox(root, font=self.font)
-        self.lbl_carrito_articulos.place(x=20, y=480)
+        self.lbl_carrito_articulos.place(x=20, y=520)
         self.btn_agregar_articulo = tk.Button(
             root, 
             text="Agregar", 
-            command=self.insert_detalle, 
+            command=self.insert, 
             font=self.button_font, 
             bg="#86BBD8", 
             fg="white"
@@ -1638,9 +1789,16 @@ class VentaApp:
         self.enable_entries()
         self.enable_buttons([self.btn_insert, self.btn_cancel])
         self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete])
-
+        
         self.current_venta_id = self.db.get_next_venta_id()
         self.ent_venta_id.insert(0, self.current_venta_id)
+        
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        self.ent_fecha.delete(0, END)
+        self.ent_fecha.insert(0, today)
+
+    def insert_detalle(self):
+        g = 0
 
     def insert(self):
         if not self.validate_fields():
@@ -1673,11 +1831,12 @@ class VentaApp:
             'cliente_id':self.combo_cliente.get()
         }
         
-        ventaResponse = self.db.add_articulo_detalle(ventaDetail)
-        #COMPLETAR PARA LISTBOX
+        ventaResponse = self.db.add_venta_detalle(ventaDetail)
+        self.selected_pieces.append(("Folio:", ventaResponse['folio_venta'], "Articulo:", ventaResponse['articulo_name'], "Cantidad:", ventaResponse['cantidad'], "Cliente:", ventaResponse['cliente_name']))
+        self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", ventaResponse['folio_venta']} {"Articulo:", ventaResponse['articulo_name']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaResponse['cliente_name']}")
         
-        self.db.add_venta_detalle(ventaDetail)
-        messagebox.showinfo("Éxito", "Venta y detalle insertados con éxito.")
+        #self.db.add_venta_detalle(ventaDetail)
+        #messagebox.showinfo("Éxito", "Venta y detalle insertados con éxito.")
     
         self.clear_entries()
         self.disable_entries()
@@ -1801,9 +1960,10 @@ class VentaApp:
     def clear_entries(self):
         self.ent_venta_id.delete(0, END)
         self.combo_cliente.delete(0, END)
-        self.ent_usuario.delete(0, END)
+        #self.ent_usuario.delete(0, END)
         self.combo_articulo.delete(0, END)
         #self.ent_user_id.delete(0, END)
+        self.ent_fecha.delete(0, END)
         self.ent_cantidad.delete(0, END)
         self.ent_subtotal.delete(0, END)
         self.ent_total.delete(0, END)
@@ -1816,6 +1976,7 @@ class VentaApp:
         self.ent_usuario["state"] = "normal"
         self.combo_articulo["state"] = "normal"
         #self.ent_user_id["state"] = "normal"
+        self.ent_fecha["state"] = "normal"
         self.ent_cantidad["state"] = "normal"
         self.ent_subtotal["state"] = "disabled"
         self.ent_total["state"] = "disabled"
@@ -1840,10 +2001,6 @@ class VentaApp:
             
             venta_window.mainloop()
     
-    def load_articulo_data(self):
-        articulos = self.db.get_all_articulos()
-        
-    
     def load_cliente_data(self):
         clientes = self.db.get_all_clientes()
         clientes_names = [cliente[2] for cliente in clientes]
@@ -1853,7 +2010,14 @@ class VentaApp:
         proveedores = self.db.get_all_proveedores()
         proveedores_names = [proveedor[1] for proveedor in proveedores]
         self.combo_proveedor['values'] = proveedores_names
-
+        
+    def load_articulo_data(self):
+        proveedor = self.combo_proveedor.get()
+        print(proveedor)
+        articulos = self.db.get_articulo_by_proveedor(proveedor)
+        articulos_names = [articulo[0] for articulo in articulos]
+        self.combo_articulo['values'] = articulos_names
+        
 class LoginWindow:
     def __init__(self, root, db):
         self.root = root
@@ -1898,14 +2062,11 @@ class LoginWindow:
         )
         self.button_login.grid(row=7, column=0, columnspan=2, pady=10)
 
-    
-
     def login(self):
         
         username = self.entry_username.get()
         password = self.entry_password.get()
-        
-        
+              
         user = self.db.search_user_by_username(username)
         if user and user[2] == password:
             self.user_id = user[0]
