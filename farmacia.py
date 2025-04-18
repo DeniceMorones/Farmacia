@@ -148,6 +148,15 @@ class DBManager:
         self.cursor.execute(query, values)
         self.conn.commit()
         
+    def get_cliente_puntos(self, cliente_id):
+        query = "SELECT puntos FROM clientes WHERE cliente_id = %s"
+        self.cursor.execute(query, (cliente_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
+        
     #PROVEEDOR
     #################################################################
     
@@ -273,7 +282,7 @@ class DBManager:
         return articuloDetail
     
     def get_articulo_name_by_id(self, articulo_id):
-        query = "SELECT descripcion FROM articulos WHERE id = %s"
+        query = "SELECT descripcion FROM articulos WHERE articulo_id = %s"
         self.cursor.execute(query, (articulo_id,))
         result = self.cursor.fetchone()
         if result:
@@ -424,6 +433,77 @@ class DBManager:
         self.cursor.execute(query, (cliente_id[0],))
         cliente = self.cursor.fetchone()
         return cliente
+
+    #COMPRAS
+    #################################################################
+    
+    def get_compra_detalle(self, folio_compra):
+        query = "SELECT * FROM det_compra WHERE folio_compra = %s"
+        self.cursor.execute(query, (folio_compra,))
+        compraDetail = self.cursor.fetchall()
+        return compraDetail
+    
+    def search_compra_by_id(self, compra_id):
+        query = "SELECT * FROM compras WHERE folio_compra = %s"
+        self.cursor.execute(query, (compra_id,))
+        compra = self.cursor.fetchone()
+        return compra
+    
+    def update_compra(self, compra):
+        user_id = self.search_user_by_username(compra['usuario'])
+        query = "UPDATE compras SET user_id=%s, fecha=%s, total=%s, WHERE folio_compra=%s"
+        values = (user_id, compra['fecha'], compra['total'])
+        self.cursor.execute(query, values)
+        self.conn.commit()
+    
+    def delete_compra(self, folio_compra):
+        query = "DELETE FROM compras WHERE folio_compra = %s"
+        self.cursor.execute(query, (folio_compra,))
+        self.conn.commit()
+    
+    def save_compra(self, compra):
+        #valor = articulo['descuento'].strip()
+        #descuento = int(valor) if valor else None
+        user_id = self.search_user_by_username(compra['usuario'])
+        query = "INSERT INTO compras (folio_compra, user_id, fecha, total) VALUES (%s, %s, %s, %s)"
+        values = (compra['compra_id'], user_id[0], compra['fecha'], compra['total'])
+        self.cursor.execute(query, values)
+        self.conn.commit()
+    
+    def get_next_compra_id(self):
+        query = "SELECT MAX(folio_compra) FROM compras"
+        self.cursor.execute(query)
+        max_id = self.cursor.fetchone()[0]
+        if max_id is None:
+            return 1
+        else:
+            return max_id + 1
+    
+    def add_compra_detalle(self, compraDetail):
+        articulo_name = self.get_articulo_name_by_id(compraDetail['articulo_id'])
+        cantidad = int(compraDetail['cantidad'])
+        
+        query = "INSERT INTO det_compra (folio_compra, articulo_id, cantidad) VALUES (%s, %s, %s) RETURNING det_id_compra;"
+        values = (compraDetail['folio_compra'], compraDetail['articulo_id'], cantidad)      
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        
+        compra_id = self.cursor.fetchone()[0]
+        
+        self.update_articulo_stock(compraDetail['articulo_id'], cantidad)  
+
+        return {
+            'folio_compra': compra_id,
+            'articulo_name': articulo_name,
+            'cantidad': cantidad, 
+        }
+      
+    def delete_compra_detalle(self, folio_compra, articulo_id, cantidad):
+        query = "DELETE FROM det_compra WHERE folio_compra = %s AND articulo_id = %s AND cantidad = %s RETURNING *;"
+        self.cursor.execute(query, (folio_compra, articulo_id, cantidad))
+        deleted_details = self.cursor.fetchall()
+        self.conn.commit()
+        return deleted_details
 
 class App:
     def __init__(self, root, username=None):    
@@ -1834,18 +1914,26 @@ class VentaApp:
 
     def insert_detalle(self):
         articulo_nombre = self.combo_articulo.get()
-        cantidad = int(self.ent_cantidad.get())
-        
         articulo = self.db.search_articulo_by_name(articulo_nombre)
+        precio_venta = int(articulo[3])
+        cliente_name = self.combo_cliente.get()
+        cantidad = int(self.ent_cantidad.get())
+        cliente_existente = self.db.search_cliente_by_venta(cliente_name)
+        
+        if cliente_existente:
+            puntos_cliente = cliente_existente[5]
+            if puntos_cliente >= 100:
+                descuento = precio_venta * (articulo[5] / 100)
+                subtotal_articulo = precio_venta - descuento
+            
         if not articulo:
             messagebox.showerror("Error", "Articulo no encontrado.")
             return
-        precio_unitario = int(articulo[2])
-        subtotal_articulo = precio_unitario * cantidad
+        
+        subtotal_articulo = precio_venta * cantidad
         self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
         
         puntos_articulo = self.db.search_articulo_by_id(self.combo_articulo.get())
-        
         
         ventaDetail = {            
             'folio_venta':self.ent_venta_id.get(),
@@ -1939,22 +2027,17 @@ class VentaApp:
             messagebox.showerror("Error", "No hay articulos en el carrito.")
             return
         
-        #cliente_existente = self.db.search_cliente_by_venta(venta['cliente'])
-        
-        #if cliente_existente:
-            
-        
         existing_venta = self.db.search_venta_by_id(venta['venta_id'])
         
         if not existing_venta:
-            self.db.save_venta(venta)
-            total_puntos = int(0)
-            puntos_articulo = self.db.get_venta_detalle(venta['venta_id'])
-            total_puntos = sum(punto[5] for punto in puntos_articulo)
-            
-            self.db.update_cliente_puntos(venta['cliente'], total_puntos)
-            
+            self.db.save_venta(venta)           
             messagebox.showinfo("Éxito", "Venta realizada con éxito.")
+        
+        total_puntos = int(0)
+        puntos_articulo = self.db.get_venta_detalle(venta['venta_id'])
+        total_puntos = sum(punto[5] for punto in puntos_articulo)
+            
+        self.db.update_cliente_puntos(venta['cliente'], total_puntos)
         
         #self.db.add_venta_detalle(ventaDetail)
     
@@ -2145,7 +2228,8 @@ class CompraApp:
         self.current_customer_id = None
         self.user_id = user_id
         self.username = username
-        self.selected_pieces = []
+        self.selected_articulos = []
+        self.precios = []
         
         print(self.username)  
 
@@ -2161,17 +2245,17 @@ class CompraApp:
         self.btn_search = tk.Button(
             root, 
             text="Buscar", 
-            command=self.search_articulo, 
+            command=self.search_compra, 
             font=self.button_font, 
             bg="#86BBD8", 
             fg="white"
         )
         self.btn_search.place(x=450, y=2)
 
-        self.lbl_venta_id = tk.Label(root, text="Compra ID:", font=self.font, bg="#ffffff", fg="#03012C")
-        self.lbl_venta_id.place(x=20, y=40)  
-        self.ent_venta_id = tk.Entry(root, font=self.font, state="readonly")
-        self.ent_venta_id.place(x=180, y=40)  
+        self.lbl_compra_id = tk.Label(root, text="Compra ID:", font=self.font, bg="#ffffff", fg="#03012C")
+        self.lbl_compra_id.place(x=20, y=40)  
+        self.ent_compra_id = tk.Entry(root, font=self.font, state="readonly")
+        self.ent_compra_id.place(x=180, y=40)  
 
         self.lbl_usuario = tk.Label(root, text="Usuario:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_usuario.place(x=20, y=80)  
@@ -2250,7 +2334,7 @@ class CompraApp:
         self.btn_new = tk.Button(
             root, 
             text="Nuevo", 
-            command=self.new_venta, 
+            command=self.new_compra, 
             font=self.button_font, 
             bg="#86BBD8", 
             fg="white"
@@ -2279,7 +2363,7 @@ class CompraApp:
         )
         self.btn_delete.place(x=460, y=440)  
 
-        self.lbl_carrito_articulos=tk.Listbox(root, font=self.font)
+        self.lbl_carrito_articulos=tk.Listbox(root, font=self.font, width=45)
         self.lbl_carrito_articulos.place(x=20, y=520)
         self.btn_agregar_articulo = tk.Button(
             root, 
@@ -2290,6 +2374,15 @@ class CompraApp:
             fg="white"
         )
         self.btn_agregar_articulo.place(x=20, y=800)
+        self.btn_quitar_articulo = tk.Button(
+            root, 
+            text="Quitar", 
+            command=self.quitar_detalle, 
+            font=self.button_font, 
+            bg="#86BBD8", 
+            fg="white"
+        )
+        self.btn_quitar_articulo.place(x=120, y=800)
 
         self.setup_buttons()  
     
@@ -2309,29 +2402,96 @@ class CompraApp:
         self.btn_insert.config(state="normal")
         self.btn_cancel.config(state="normal")
 
-    def new_venta(self):
+    def new_compra(self):
         self.clear_entries()
         self.enable_entries()
         self.enable_buttons([self.btn_insert, self.btn_cancel])
         self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete])
         
-        self.current_venta_id = self.db.get_next_venta_id()
-        self.ent_venta_id.insert(0, self.current_venta_id)
+        self.current_compra_id = self.db.get_next_compra_id()
+        self.ent_compra_id.insert(0, self.current_compra_id)
         
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         self.ent_fecha.delete(0, END)
         self.ent_fecha.insert(0, today)
 
     def insert_detalle(self):
-        g = 0
+        articulo_nombre = self.combo_articulo.get()
+        articulo = self.db.search_articulo_by_name(articulo_nombre)
+        precio_unitario = int(articulo[3])
+        cantidad = int(self.ent_cantidad.get())
+            
+            
+        if not articulo:
+            messagebox.showerror("Error", "Articulo no encontrado.")
+            return
+        
+        subtotal_articulo = precio_unitario * cantidad
+        self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                
+        compraDetail = {            
+            'folio_compra':self.ent_compra_id.get(),
+            'articulo_id':articulo[0],
+            'cantidad':self.ent_cantidad.get()
+        }
+        
+        compraResponse = self.db.add_compra_detalle(compraDetail)
+        self.selected_articulos.append((compraResponse['folio_compra'], compraResponse['articulo_name'], compraResponse['cantidad']))
+        self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", compraResponse['folio_venta']} {"Articulo:", compraResponse['articulo_name']} {"Cantidad:", compraResponse['cantidad']}")
+        
+        self.calculate_total()
+    
+    
+        
+    def quitar_detalle(self):
+        if not self.selected_articulos:
+            messagebox.showwarning("No hay articulos para quitar.")
+            return
+        
+        try:
+            last_detail = self.selected_articulos[-1]
+            
+            articulo_id = self.db.search_articulo_by_name(last_detail[1])
+            
+            success = self.db.delete_compra_detalle(
+                last_detail[0],  # folio_compra
+                articulo_id[0],  # articulo_id
+                last_detail[2],  # cantidad
+            )
+            
+            if success:
+                self.selected_articulos.pop()
+                self.lbl_carrito_articulos.delete(tk.END)
+                
+                self.db.update_articulo_stock(articulo_id[0], -last_detail[2])
+                
+                messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
+            else:
+                messagebox.showerror("Error", "No se pudo eliminar el detalle de la BD")
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error: {str(e)}")
+            print(f"Error al eliminar detalle: {e}")
 
     def insert(self):
         if not self.validate_fields():
             return
-
-        venta = {
-            'venta_id': self.ent_venta_id.get(),
-            'cliente': self.combo_cliente.get(),
+ 
+        if not re.match(r'^\d+$', self.ent_cantidad.get()):
+            messagebox.showerror("Error", "La cantidad debe ser un número positivo.")
+            return
+                
+        articulo_nombre = self.combo_articulo.get()
+        articulo = self.db.search_articulo_by_name(articulo_nombre)
+        precio_unitario = int(articulo[2])
+        cantidad = int(self.ent_cantidad.get())
+        
+        subtotal_articulo = precio_unitario * cantidad
+        self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+        
+        self.calculate_total()
+        
+        compra = {
+            'compra_id': self.ent_compra_id.get(),
             'usuario': self.ent_usuario.get(),
             'articulo': self.combo_articulo.get(),            
             'cantidad': self.ent_cantidad.get(),
@@ -2339,34 +2499,51 @@ class CompraApp:
             'total': self.ent_total.get()
         }
         
-        if not re.match(r'^\d+$', venta['cantidad']):
-            messagebox.showerror("Error", "La cantidad debe ser un número positivo.")
-            return
-        
-        existing_venta = self.db.search_venta_by_id(venta['venta_id'])
-        
-        if not existing_venta:
-            self.db.save_venta(venta)
-            messagebox.showinfo("Éxito", "Venta realizada con éxito.")
+        existing_compra = self.db.search_compra_by_id(compra['compra_id'])
+  
+        if not existing_compra:
+            self.db.save_compra(compra)
             
-        ventaDetail = {            
-            'folio_venta':self.ent_venta_id.get(),
-            'articulo_id':self.combo_articulo.get(),
-            'cantidad':self.ent_cantidad.get(),
-            'cliente_id':self.combo_cliente.get()
+        if not articulo:
+            messagebox.showerror("Error", "Articulo no encontrado.")
+            return
+               
+        compraDetail = {            
+            'folio_compra':self.ent_compra_id.get(),
+            'articulo_id':articulo[0],
+            'cantidad':self.ent_cantidad.get()
         }
         
-        ventaResponse = self.db.add_venta_detalle(ventaDetail)
-        self.selected_pieces.append(("Folio:", ventaResponse['folio_venta'], "Articulo:", ventaResponse['articulo_name'], "Cantidad:", ventaResponse['cantidad'], "Cliente:", ventaResponse['cliente_name']))
-        self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", ventaResponse['folio_venta']} {"Articulo:", ventaResponse['articulo_name']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaResponse['cliente_name']}")
-        
-        #self.db.add_venta_detalle(ventaDetail)
-        #messagebox.showinfo("Éxito", "Venta y detalle insertados con éxito.")
+        compraResponse = self.db.add_compra_detalle(compraDetail)
+        self.selected_articulos.append((compraResponse['folio_compra'], compraResponse['articulo_name'], compraResponse['cantidad']))
+        self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", compraResponse['folio_compra']} {"Articulo:", compraResponse['articulo_name']} {"Cantidad:", compraResponse['cantidad']}")
     
-        self.clear_entries()
-        self.disable_entries()
-        self.disable_buttons([self.btn_insert, self.btn_cancel])
+        #self.clear_entries()
+        #self.disable_entries()
+        #self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
+    
+    def calculate_total(self):
+        subtotal_total = sum(item['subtotal'] for item in self.precios)
+        iva = subtotal_total * 0.16
+        total = subtotal_total + iva
+        
+        self.ent_subtotal.config(state="normal")
+        self.ent_total.config(state="normal")
+        self.ent_iva.config(state="normal")
+
+        self.ent_subtotal.delete(0, tk.END)
+        self.ent_subtotal.insert(0, f"{subtotal_total:.2f}")
+
+        self.ent_iva.delete(0, tk.END)
+        self.ent_iva.insert(0, f"{iva:.2f}")
+
+        self.ent_total.delete(0, tk.END)
+        self.ent_total.insert(0, f"{total:.2f}")
+
+        self.ent_subtotal.config(state="disabled")
+        self.ent_iva.config(state="disabled")
+        self.ent_total.config(state="disabled")
 
     def cancel(self):
         self.clear_entries()
@@ -2375,66 +2552,78 @@ class CompraApp:
         self.enable_buttons([self.btn_new])
         self.ent_search_id["state"] = "normal"
 
-    def search_articulo(self):
-        articulo_id_or_name = self.ent_search_id.get()
-        if articulo_id_or_name.isdigit():  
-            articulo = self.db.search_articulo_by_id(articulo_id_or_name)
-        else:  
-            articulo = self.db.search_articulo_by_name(articulo_id_or_name)
+    def search_compra(self):
+        compra_id = self.ent_search_id.get()
+        self.clear_folio_entry()
         
-        if articulo:
-            self.ent_articulo_id.delete(0, END)
-            self.ent_descripcion.delete(0, END)
-            self.ent_preciouni.delete(0, END)
-            self.ent_precioven.delete(0, END)
-            self.ent_descuento.delete(0, END)
-            self.ent_puntos.delete(0, END)
-
-            self.ent_articulo_id.insert(0, articulo[0])
-            self.ent_descripcion.insert(0, articulo[1])
-            self.ent_preciouni.insert(0, articulo[2])
-            self.ent_precioven.insert(0, articulo[3])
-            self.ent_descuento.insert(0, articulo[4])
-            self.ent_puntos.insert(0, articulo[5])
-
-            details = self.db.get_articulo_details(articulo[0])
-            proveedor_id = self.db.search_proveedor_by_id(details[0])
+        compra = self.db.search_compra_by_id(compra_id)
+        
+        user_name = self.db.search_user_by_id(compra[1])
+        #articulo_id = self.db.get_compra_detalle(compra[0])
+        #print("Articulo ID:", articulo_id)
+        #proveedor = self.db.get_articulo_details(articulo_id[2])
+        #proveedor_name = self.db.search_proveedor_by_id(proveedor[1])
+        
+        if compra:
+            self.current_compra_id = compra[0]  
             
-            self.combo_username.insert(0, proveedor_id[1])
-            self.ent_stock.insert(0, details[1])
+            self.ent_compra_id["state"] = "normal"
+            self.ent_usuario["state"] = "normal"
+            #self.combo_articulo["state"] = "normal"
+            #self.ent_user_id["state"] = "normal"
+            self.ent_fecha["state"] = "normal"
+            #self.ent_cantidad["state"] = "normal"
+            #self.ent_subtotal["state"] = "disabled"
+            self.ent_total["state"] = "normal"
+            #self.ent_iva['state'] = "disabled"
 
+            self.ent_compra_id.delete(0, END)
+            self.ent_usuario.delete(0, END)
+            self.combo_proveedor.delete(0, END) 
+            self.combo_articulo.delete(0, END)
+            self.ent_fecha.delete(0, END)
+            self.ent_cantidad.delete(0, END)
+            self.ent_subtotal.delete(0, END)
+            self.ent_total.delete(0, END)
+            self.ent_iva.delete(0, END)
+            
+            self.ent_compra_id.insert(0, compra[0])  # compra_id
+            self.ent_usuario.insert(0, user_name[1])   # usuario
+            self.ent_fecha.insert(0, compra[2]) # fecha
+            self.ent_total.insert(0, compra[3]) # total
+        
+            self.lbl_carrito_articulos.delete(0, END)
+
+            details = self.db.get_compra_detalle(compra[0])  
+            for detail in details:
+                print("Detalle obtenido:", detail) 
+                self.selected_articulos.append(detail)  
+                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Usuario ID:", detail[1]} {"Fecha:", detail[2]} {"Total:", detail[3]}")
+            
             self.disable_buttons([self.btn_new, self.btn_insert])
-            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
-            self.enable_entries()
-            self.ent_search_id["state"] = "normal"
+            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
+            self.ent_compra_id.config(state="normal")
             
-            self.btn_edit["state"] = "normal"
+            self.enable_entries()
+            self.ent_compra_id.config(state="readonly")
         else:
-            messagebox.showinfo("Error", "Articulo no encontrado.")
+            messagebox.showinfo("Error", "Compra no encontrada.")
 
     def edit(self):
         if not self.validate_fields():
             return
         
-        articulo = {
-            'articulo_id': self.ent_articulo_id.get(),
-            'descripcion': self.ent_descripcion.get(),
-            'precio_unitario': self.ent_preciouni.get(),
-            'precio_venta': self.ent_precioven.get(),
-            'descuento': self.ent_descuento.get(),
-            'puntos':self.ent_puntos.get()
-            
+        compra = {
+            'compra_id': self.ent_compra_id.get(),
+            'usuario': self.ent_usuario.get(),
+            'articulo': self.combo_articulo.get(),            
+            'cantidad': self.ent_cantidad.get(),
+            'fecha': self.ent_fecha.get(),
+            'total': self.ent_total.get()
         }
         
-        articuloDetail = {            
-            'proveedor_id':self.combo_username.get(),
-            'articulo_id':self.ent_articulo_id.get(),
-            'precio':self.ent_precioven.get(),
-            'existencia':self.ent_stock.get()
-        }
-        
-        self.db.update_articulo(articulo, articuloDetail)
-        messagebox.showinfo("Éxito", "Articulo actualizado con éxito.")
+        self.db.update_compra(compra)
+        messagebox.showinfo("Éxito", "Compra actualizada con éxito.")
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
@@ -2454,20 +2643,17 @@ class CompraApp:
 
     def validate_fields(self):
         if (
-            not self.ent_articulo_id.get()
-            or not self.ent_descripcion.get()
-            or not self.ent_preciouni.get()
-            or not self.ent_precioven.get()
-            #or not self.ent_descuento.get()
-            or not self.ent_puntos.get()
+            not self.ent_compra_id.get()
+            or not self.ent_usuario.get()
+            or not self.combo_proveedor.get()
+            or not self.combo_articulo.get()
+            or not self.ent_fecha.get()
+            or not self.ent_cantidad.get()    
         ):
             messagebox.showerror("Error", "Todos los campos son obligatorios.")
             return False
         if (
-            not self.ent_preciouni.get().isdigit()
-            or not self.ent_precioven.get().isdigit()
-            #or not self.ent_descuento.get().isdigit()
-            or not self.ent_puntos.get().isdigit()
+            not self.ent_cantidad.get().isdigit()
         ):
             messagebox.showerror("Error, ingrese solo numeros")
             return False
@@ -2483,7 +2669,7 @@ class CompraApp:
             button["state"] = "disabled"
 
     def clear_entries(self):
-        self.ent_venta_id.delete(0, END)
+        self.ent_compra_id.delete(0, END)
         #self.ent_usuario.delete(0, END)
         self.combo_articulo.delete(0, END)
         #self.ent_user_id.delete(0, END)
@@ -2495,8 +2681,7 @@ class CompraApp:
         #self.ent_user_id.delete(0, END)
 
     def enable_entries(self):
-        self.ent_venta_id["state"] = "normal"
-        self.combo_cliente["state"] = "normal"
+        self.ent_compra_id["state"] = "normal"
         self.ent_usuario["state"] = "normal"
         self.combo_articulo["state"] = "normal"
         #self.ent_user_id["state"] = "normal"
@@ -2507,7 +2692,7 @@ class CompraApp:
         self.ent_iva['state'] = "disabled"
 
     def disable_entries(self):
-        self.ent_venta_id["state"] = "disabled"
+        self.ent_compra_id["state"] = "disabled"
         self.combo_cliente["state"] = "disabled"
         self.ent_usuario["state"] = "disabled"
         self.combo_articulo["state"] = "disabled"
@@ -2516,6 +2701,13 @@ class CompraApp:
         self.ent_subtotal["state"] = "disabled"
         self.ent_total["state"] = "disabled"
         self.ent_iva['state'] = "disabled"
+        
+    def clear_folio_entry(self):
+        #self.clear_folio_entry()
+        self.ent_compra_id.config(state="normal")
+
+        self.ent_compra_id.delete(0, END)
+        self.ent_compra_id.config(state="readonly")
 
     def open_compra_menu(self):
             compra_window = tk.Tk()
