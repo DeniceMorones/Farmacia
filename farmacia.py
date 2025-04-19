@@ -5,7 +5,7 @@ import psycopg2
 import datetime
 import re
 from psycopg2 import Error
-iva = 16
+iva = 16 #al final este no lo utilice
 
 class DBManager:
     
@@ -2503,6 +2503,7 @@ class CompraApp:
   
         if not existing_compra:
             self.db.save_compra(compra)
+            messagebox.showinfo("Éxito", "Compra realizada con éxito.")
             
         if not articulo:
             messagebox.showerror("Error", "Articulo no encontrado.")
@@ -2546,6 +2547,13 @@ class CompraApp:
         self.ent_total.config(state="disabled")
 
     def cancel(self):
+        compra_id = self.ent_compra_id.get()
+        saved_compra = self.db.search_compra_by_id(compra_id)
+        if saved_compra:
+            self.db.delete_compra(saved_compra[0])
+            self.db.delete_compra_detalle(compra_id)
+            messagebox.showinfo("Éxito", "Compra cancelada con éxito.")
+            
         self.clear_entries()
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
@@ -2559,17 +2567,14 @@ class CompraApp:
         compra = self.db.search_compra_by_id(compra_id)
         
         user_name = self.db.search_user_by_id(compra[1])
-        #articulo_id = self.db.get_compra_detalle(compra[0])
-        #print("Articulo ID:", articulo_id)
-        #proveedor = self.db.get_articulo_details(articulo_id[2])
-        #proveedor_name = self.db.search_proveedor_by_id(proveedor[1])
         
         if compra:
             self.current_compra_id = compra[0]  
             
             self.ent_compra_id["state"] = "normal"
             self.ent_usuario["state"] = "normal"
-            #self.combo_articulo["state"] = "normal"
+            self.combo_articulo["state"] = "normal"
+            self.combo_proveedor["state"] = "normal"
             #self.ent_user_id["state"] = "normal"
             self.ent_fecha["state"] = "normal"
             #self.ent_cantidad["state"] = "normal"
@@ -2598,7 +2603,9 @@ class CompraApp:
             for detail in details:
                 print("Detalle obtenido:", detail) 
                 self.selected_articulos.append(detail)  
-                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Usuario ID:", detail[1]} {"Fecha:", detail[2]} {"Total:", detail[3]}")
+                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Usuario ID:", detail[1]} {"Fecha:", detail[2]} {"Cantidad:", detail[3]}")
+            
+            self.lbl_carrito_articulos.bind('<<ListboxSelect>>', self.on_listbox_select)
             
             self.disable_buttons([self.btn_new, self.btn_insert])
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
@@ -2608,6 +2615,23 @@ class CompraApp:
             self.ent_compra_id.config(state="readonly")
         else:
             messagebox.showinfo("Error", "Compra no encontrada.")
+    
+    def on_listbox_select(self, event):
+        seleccion_detalle = self.lbl_carrito_articulos.curselection()
+        print("Seleccion:", seleccion_detalle)
+        if seleccion_detalle:
+            index = seleccion_detalle[0]  
+            detail = self.selected_articulos[index] 
+    
+            articulo_id = detail[1]  
+            print(f"Articulo ID: {articulo_id}")
+
+            proveedor = self.db.get_articulo_details(articulo_id)
+            proveedor_data = self.db.search_proveedor_by_id(proveedor[0])
+            self.combo_proveedor.insert(0, proveedor_data[1])  
+            articulo_name = self.db.search_articulo_by_id(articulo_id)
+            self.combo_articulo.insert(0, articulo_name[1])  
+            self.ent_cantidad.insert(0, detail[3])
 
     def edit(self):
         if not self.validate_fields():
@@ -2693,7 +2717,6 @@ class CompraApp:
 
     def disable_entries(self):
         self.ent_compra_id["state"] = "disabled"
-        self.combo_cliente["state"] = "disabled"
         self.ent_usuario["state"] = "disabled"
         self.combo_articulo["state"] = "disabled"
         #self.ent_user_id["state"] = "disabled"
