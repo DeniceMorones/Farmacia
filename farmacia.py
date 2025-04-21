@@ -449,12 +449,25 @@ class DBManager:
         compra = self.cursor.fetchone()
         return compra
     
-    def update_compra(self, compra):
+    def update_compra(self, compra, compraDetail):
         user_id = self.search_user_by_username(compra['usuario'])
-        query = "UPDATE compras SET user_id=%s, fecha=%s, total=%s, WHERE folio_compra=%s"
-        values = (user_id, compra['fecha'], compra['total'])
+        query = "UPDATE compras SET user_id=%s, fecha=%s, total=%s WHERE folio_compra=%s"
+        values = (user_id[0], compra['fecha'], compra['total'], compra['compra_id'])
         self.cursor.execute(query, values)
         self.conn.commit()
+        
+        if compraDetail:
+            articulo_id = self.search_articulo_by_name(compraDetail['articulo'])
+            query2 = "UPDATE det_compra SET articulo_id = %s, cantidad = %s WHERE det_id_compra = %s"
+            values2 = (articulo_id[0], compraDetail['cantidad'], compraDetail['det_id_compra'])
+            self.cursor.execute(query2, values2)
+            self.conn.commit()
+            
+            cantidad = int(compraDetail['cantidad'])
+            
+            self.update_articulo_stock(articulo_id, cantidad)  
+
+            
     
     def delete_compra(self, folio_compra):
         query = "DELETE FROM compras WHERE folio_compra = %s"
@@ -2228,6 +2241,7 @@ class CompraApp:
         self.current_customer_id = None
         self.user_id = user_id
         self.username = username
+        self.current_det_id = None
         self.selected_articulos = []
         self.precios = []
         
@@ -2599,7 +2613,7 @@ class CompraApp:
         
             self.lbl_carrito_articulos.delete(0, END)
 
-            details = self.db.get_compra_detalle(compra[0])  
+            details = self.db.get_compra_detalle(compra[0]) 
             for detail in details:
                 print("Detalle obtenido:", detail) 
                 self.selected_articulos.append(detail)  
@@ -2618,15 +2632,16 @@ class CompraApp:
     
     def on_listbox_select(self, event):
         seleccion_detalle = self.lbl_carrito_articulos.curselection()
-        print("Seleccion:", seleccion_detalle)
         if seleccion_detalle:
             index = seleccion_detalle[0]  
             detail = self.selected_articulos[index] 
     
             articulo_id = detail[1]  
-            print(f"Articulo ID: {articulo_id}")
 
             proveedor = self.db.get_articulo_details(articulo_id)
+            det_id = self.db.get_compra_detalle(detail[0])
+            print(det_id[0][0])
+            self.current_det_id = det_id[0][0]
             proveedor_data = self.db.search_proveedor_by_id(proveedor[0])
             self.combo_proveedor.insert(0, proveedor_data[1])  
             articulo_name = self.db.search_articulo_by_id(articulo_id)
@@ -2637,6 +2652,16 @@ class CompraApp:
         if not self.validate_fields():
             return
         
+        articulo_nombre = self.combo_articulo.get()
+        articulo = self.db.search_articulo_by_name(articulo_nombre)
+        precio_unitario = int(articulo[2])
+        cantidad = int(self.ent_cantidad.get())
+        
+        subtotal_articulo = precio_unitario * cantidad
+        self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+        
+        self.calculate_total()
+        
         compra = {
             'compra_id': self.ent_compra_id.get(),
             'usuario': self.ent_usuario.get(),
@@ -2646,8 +2671,20 @@ class CompraApp:
             'total': self.ent_total.get()
         }
         
-        self.db.update_compra(compra)
+        compraDetail = {
+            'det_id_compra': self.current_det_id,
+            'compra_id': self.ent_compra_id.get(),
+            'articulo': self.combo_articulo.get(),
+            'cantidad': self.ent_cantidad.get() 
+        }
+        
+        self.db.update_compra(compra, compraDetail)
+        
+        #CHECAR ESTO EN UN FUTURO POR SI LLEGA A DAR ERROR
+        self.precios = []
+               
         messagebox.showinfo("Éxito", "Compra actualizada con éxito.")
+        self.current_det_id = None
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
