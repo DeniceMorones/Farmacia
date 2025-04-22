@@ -442,7 +442,7 @@ class DBManager:
         self.cursor.execute(query, (folio_compra,))
         compraDetail = self.cursor.fetchall()
         return compraDetail
-    
+       
     def search_compra_by_id(self, compra_id):
         query = "SELECT * FROM compras WHERE folio_compra = %s"
         self.cursor.execute(query, (compra_id,))
@@ -458,16 +458,20 @@ class DBManager:
         
         if compraDetail:
             articulo_id = self.search_articulo_by_name(compraDetail['articulo'])
-            query2 = "UPDATE det_compra SET articulo_id = %s, cantidad = %s WHERE det_id_compra = %s"
-            values2 = (articulo_id[0], compraDetail['cantidad'], compraDetail['det_id_compra'])
+            query2 = "UPDATE det_compra SET articulo_id = %s, cantidad = %s WHERE det_id_compra = %s AND folio_compra = %s"
+            values2 = (articulo_id[0], compraDetail['cantidad'], compraDetail['det_id_compra'], compraDetail['compra_id'])
             self.cursor.execute(query2, values2)
             self.conn.commit()
             
             cantidad = int(compraDetail['cantidad'])
             
-            self.update_articulo_stock(articulo_id, cantidad)  
+            self.update_articulo_stock(articulo_id[0], cantidad)  
 
-            
+    def update_total_in_compra(self, compra_id, total):
+        query = "UPDATE compras SET total = %s WHERE folio_compra = %s"
+        values = (total, compra_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()       
     
     def delete_compra(self, folio_compra):
         query = "DELETE FROM compras WHERE folio_compra = %s"
@@ -517,7 +521,21 @@ class DBManager:
         deleted_details = self.cursor.fetchall()
         self.conn.commit()
         return deleted_details
-
+    
+    def delete_all_detalles(self, folio_compra):
+        query = "DELETE FROM det_compra WHERE folio_compra = %s"
+        self.cursor.execute(query, (folio_compra,))
+        self.conn.commit()
+        
+    def get_one_detalle(self, folio_compra):
+            folio_compra_int = int(folio_compra)
+            print(folio_compra_int)
+            query = "SELECT * FROM det_compra WHERE folio_compra = %s"
+            self.cursor.execute(query, (folio_compra_int,))
+            compraDetail = self.cursor.fetchall()
+            print(compraDetail)
+            return compraDetail
+        
 class App:
     def __init__(self, root, username=None):    
         self.root = root
@@ -2543,6 +2561,8 @@ class CompraApp:
         iva = subtotal_total * 0.16
         total = subtotal_total + iva
         
+        compra_id = self.ent_compra_id.get()
+        
         self.ent_subtotal.config(state="normal")
         self.ent_total.config(state="normal")
         self.ent_iva.config(state="normal")
@@ -2555,6 +2575,8 @@ class CompraApp:
 
         self.ent_total.delete(0, tk.END)
         self.ent_total.insert(0, f"{total:.2f}")
+        
+        self.db.update_total_in_compra(compra_id, total)
 
         self.ent_subtotal.config(state="disabled")
         self.ent_iva.config(state="disabled")
@@ -2565,7 +2587,7 @@ class CompraApp:
         saved_compra = self.db.search_compra_by_id(compra_id)
         if saved_compra:
             self.db.delete_compra(saved_compra[0])
-            self.db.delete_compra_detalle(compra_id)
+            self.db.delete_all_detalles(compra_id)
             messagebox.showinfo("Éxito", "Compra cancelada con éxito.")
             
         self.clear_entries()
@@ -2619,6 +2641,7 @@ class CompraApp:
                 self.selected_articulos.append(detail)  
                 self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Usuario ID:", detail[1]} {"Fecha:", detail[2]} {"Cantidad:", detail[3]}")
             
+            print("Detalles seleccionados:", self.lbl_carrito_articulos.get(0, tk.END))
             self.lbl_carrito_articulos.bind('<<ListboxSelect>>', self.on_listbox_select)
             
             self.disable_buttons([self.btn_new, self.btn_insert])
@@ -2632,14 +2655,17 @@ class CompraApp:
     
     def on_listbox_select(self, event):
         seleccion_detalle = self.lbl_carrito_articulos.curselection()
+        print("Seleccionado:", seleccion_detalle)
         if seleccion_detalle:
-            index = seleccion_detalle[0]  
+            print("Seleccionado:", seleccion_detalle)
+            index = seleccion_detalle[0]
+            print(index)  
             detail = self.selected_articulos[index] 
-    
-            articulo_id = detail[1]  
-
+            print("Detalle seleccionado:", detail)
+            articulo_id = detail[2]  
+            print("Articulo_id: ",articulo_id)
             proveedor = self.db.get_articulo_details(articulo_id)
-            det_id = self.db.get_compra_detalle(detail[0])
+            det_id = self.db.get_compra_detalle(detail[1])
             print(det_id[0][0])
             self.current_det_id = det_id[0][0]
             proveedor_data = self.db.search_proveedor_by_id(proveedor[0])
