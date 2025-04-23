@@ -450,13 +450,12 @@ class DBManager:
         compra = self.cursor.fetchone()
         return compra
     
-    def update_compra(self, compra, compraDetail):
+    def update_compra(self, compra, compraDetail, actual_stock):
         articulo_id = self.search_articulo_by_name(compraDetail['articulo'])
         query0 = "SELECT * FROM det_compra WHERE articulo_id = %s AND folio_compra = %s"
         self.cursor.execute(query0, (articulo_id[0], compra['compra_id']))
         detalle_compra = self.cursor.fetchone()
-        print(detalle_compra)
-        
+        print(detalle_compra)       
         
         user_id = self.search_user_by_username(compra['usuario'])
         query = "UPDATE compras SET user_id=%s, fecha=%s, total=%s WHERE folio_compra=%s"
@@ -466,15 +465,18 @@ class DBManager:
         
         if compraDetail:
             cantidad_nueva = int(compraDetail['cantidad'])    
-            cantidad_existente = int(detalle_compra[3])
+            cantidad_existente = actual_stock
+            print("Cantidad existente", cantidad_existente)
             
-            
+            print("Cantidad nueva", cantidad_nueva)
+                        
             if cantidad_nueva > cantidad_existente:  
                 diferencia = cantidad_nueva - cantidad_existente
                 self.update_articulo_stock(articulo_id[0], diferencia)
             elif cantidad_nueva < cantidad_existente:
                 diferencia = cantidad_existente - cantidad_nueva
                 self.update_articulo_stock(articulo_id[0], -diferencia)
+            print(diferencia)
             
             print(f'Cantidad existente: {cantidad_existente}, Cantidad nueva: {cantidad_nueva}, Diferencia: {diferencia}') 
             
@@ -2298,6 +2300,8 @@ class CompraApp:
         self.user_id = user_id
         self.username = username
         self.current_det_id = None
+        self.actual_stock = None
+        self.cantidad_actual = None
         self.selected_articulos = []
         self.precios = []
         
@@ -2691,7 +2695,7 @@ class CompraApp:
             for detail in details:
                 print("Detalle obtenido:", detail) 
                 self.selected_articulos.append(detail)  
-                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Usuario ID:", detail[1]} {"Fecha:", detail[2]} {"Cantidad:", detail[3]}")
+                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Compra ID:", detail[1]} {"Articulo ID:", detail[2]} {"Cantidad:", detail[3]}")
             
             print("Detalles seleccionados:", self.lbl_carrito_articulos.get(0, tk.END))
             self.lbl_carrito_articulos.bind('<<ListboxSelect>>', self.on_listbox_select)
@@ -2709,6 +2713,7 @@ class CompraApp:
         self.combo_articulo.delete(0, END)
         self.combo_proveedor.delete(0, END)
         self.ent_cantidad.delete(0, END)
+        
 
         seleccion_detalle = self.lbl_carrito_articulos.curselection()
         print("Seleccionado:", seleccion_detalle)
@@ -2729,6 +2734,13 @@ class CompraApp:
             articulo_name = self.db.search_articulo_by_id(articulo_id)
             self.combo_articulo.insert(0, articulo_name[1])  
             self.ent_cantidad.insert(0, detail[3])
+            
+            compra_id = self.ent_compra_id.get()
+            cantidad = detail[3]
+            self.cantidad_actual = cantidad
+            
+            stock = self.db.search_compra_detalle_by_id(compra_id, articulo_id)
+            self.actual_stock = stock[3] 
 
     def edit(self):
         if not self.validate_fields():
@@ -2736,16 +2748,42 @@ class CompraApp:
                
         articulo_nombre = self.combo_articulo.get()
         articulo = self.db.search_articulo_by_name(articulo_nombre)
+        compra_id = self.ent_compra_id.get()
         precio_unitario = int(articulo[2])
-        cantidad = int(self.ent_cantidad.get())
+        
+        cantidad_actual = int(self.ent_cantidad.get())
+        print("Cantidad actual:", cantidad_actual)
+        detalle_encontrado = self.db.search_compra_detalle_by_id(compra_id, articulo[0])
+        cantidad_en_bd = detalle_encontrado[3]
+        print("Cantidad en bd:", cantidad_en_bd)
+        diferencia_cantidades = 0
+        
+        if cantidad_actual > cantidad_en_bd:
+            diferencia_cantidades = cantidad_actual - cantidad_en_bd
+            #self.db.update_articulo_stock(articulo[0], -diferencia_cantidades)
+            print("Diferencia de cantidades si cantidad actual es mayor:", diferencia_cantidades)
+            #self.db.update_articulo_stock(articulo[0], diferencia_cantidades)
+        #diferencia_cantidades = cantidad_actual - cantidad_en_bd
+        
         
         total_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
+        print("Total devuelto de compras:", total_existente)
         if total_existente:
             total = total_existente[3]
-            subtotal_articulo = total + (precio_unitario * cantidad)
-            self.calculate_total()
+            print("Total existente:", total)            
+            if cantidad_actual < cantidad_en_bd:
+                diferencia_cantidades = cantidad_en_bd - cantidad_actual
+                subtotal_articulo = total - (precio_unitario * (-1 * diferencia_cantidades))
+                print("Subtotal articulo:", subtotal_articulo)
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO  
+                self.calculate_total() 
+            else:            
+                subtotal_articulo = total + (precio_unitario * diferencia_cantidades)
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                print("Subtotal articulo en else:", subtotal_articulo)  
+                self.calculate_total()
         else:
-            subtotal_articulo = precio_unitario * cantidad
+            subtotal_articulo = precio_unitario * cantidad_actual
             self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO            
             self.calculate_total()
         
@@ -2765,10 +2803,17 @@ class CompraApp:
             'cantidad': self.ent_cantidad.get() 
         }
         
-        self.db.update_compra(compra, compraDetail)
+        articulo_id = self.db.search_articulo_by_name(compraDetail["articulo"])
+        compraDetail_existente = self.db.search_compra_detalle_by_id(compraDetail["compra_id"], articulo_id[0])
+        if compraDetail_existente:
+            self.db.update_compra_detalle(compraDetail["compra_id"], articulo_id[0], compraDetail['cantidad'])
         
-        #CHECAR ESTO EN UN FUTURO POR SI LLEGA A DAR ERROR
+        self.db.update_compra(compra, compraDetail, self.actual_stock)
+        
+        #CHECAR ESTOS EN UN FUTURO POR SI LLEGA A DAR ERROR
         self.precios = []
+        self.actual_stock = None
+        self.cantidad_actual = None
                
         messagebox.showinfo("Éxito", "Compra actualizada con éxito.")
         self.current_det_id = None
@@ -2776,6 +2821,7 @@ class CompraApp:
         self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
         self.clear_entries()
+        
 
     def delete(self):
         if not self.ent_compra_id.get():
