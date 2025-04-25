@@ -424,6 +424,11 @@ class DBManager:
         self.cursor.execute(query, values)
         self.conn.commit()
     
+    def delete_venta(self, folio_venta):
+        query = "DELETE FROM ventas WHERE folio_venta = %s"
+        self.cursor.execute(query, (folio_venta,))
+        self.conn.commit()
+    
     def get_next_venta_id(self):
         query = "SELECT MAX(folio_venta) FROM ventas"
         self.cursor.execute(query)
@@ -479,6 +484,11 @@ class DBManager:
         self.cursor.execute(query, (articulo_id,))
         articuloDetail = self.cursor.fetchone()
         return articuloDetail
+
+    def delete_all_detalles_venta(self, folio_venta):
+        query = "DELETE FROM det_venta WHERE folio_venta = %s"
+        self.cursor.execute(query, (folio_venta,))
+        self.conn.commit()
     
     def search_cliente_by_venta(self, cliente_name):
         cliente_id = self.search_customer_by_name(cliente_name)
@@ -486,6 +496,12 @@ class DBManager:
         self.cursor.execute(query, (cliente_id[0],))
         cliente = self.cursor.fetchone()
         return cliente
+
+    def update_total_in_venta(self, venta_id, total):
+        query = "UPDATE ventas SET total = %s WHERE folio_venta = %s"
+        values = (total, venta_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()
 
     #COMPRAS
     #################################################################
@@ -1858,7 +1874,7 @@ class VentaApp:
         self.btn_search = tk.Button(
             root, 
             text="Buscar", 
-            command=self.search_articulo, 
+            command=self.search_venta, 
             font=self.button_font, 
             bg="#86BBD8", 
             fg="white"
@@ -2077,6 +2093,8 @@ class VentaApp:
         iva = subtotal_total * 0.16
         total = subtotal_total + iva
         
+        venta_id = self.ent_venta_id.get()
+        
         self.ent_subtotal.config(state="normal")
         self.ent_total.config(state="normal")
         self.ent_iva.config(state="normal")
@@ -2089,6 +2107,8 @@ class VentaApp:
 
         self.ent_total.delete(0, tk.END)
         self.ent_total.insert(0, f"{total:.2f}")
+        
+        self.db.update_total_in_venta(venta_id, total)
 
         self.ent_subtotal.config(state="disabled")
         self.ent_iva.config(state="disabled")
@@ -2240,48 +2260,111 @@ class VentaApp:
         self.enable_buttons([self.btn_new])
 
     def cancel(self):
+        venta_id = self.ent_venta_id.get()
+        saved_venta = self.db.search_venta_by_id(venta_id)
+        if saved_venta:
+            self.db.delete_venta(saved_venta[0])
+            self.db.delete_all_detalles_venta(venta_id)
+            messagebox.showinfo("Éxito", "Venta cancelada con éxito.")
+        
         self.clear_entries()
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
         self.enable_buttons([self.btn_new])
         self.ent_search_id["state"] = "normal"
 
-    def search_articulo(self):
-        articulo_id_or_name = self.ent_search_id.get()
-        if articulo_id_or_name.isdigit():  
-            articulo = self.db.search_articulo_by_id(articulo_id_or_name)
-        else:  
-            articulo = self.db.search_articulo_by_name(articulo_id_or_name)
+    def search_venta(self):
+        venta_id = self.ent_search_id.get()
+        self.clear_folio_entry()
         
-        if articulo:
-            self.ent_articulo_id.delete(0, END)
-            self.ent_descripcion.delete(0, END)
-            self.ent_preciouni.delete(0, END)
-            self.ent_precioven.delete(0, END)
-            self.ent_descuento.delete(0, END)
-            self.ent_puntos.delete(0, END)
-
-            self.ent_articulo_id.insert(0, articulo[0])
-            self.ent_descripcion.insert(0, articulo[1])
-            self.ent_preciouni.insert(0, articulo[2])
-            self.ent_precioven.insert(0, articulo[3])
-            self.ent_descuento.insert(0, articulo[4])
-            self.ent_puntos.insert(0, articulo[5])
-
-            details = self.db.get_articulo_details(articulo[0])
-            proveedor_id = self.db.search_proveedor_by_id(details[0])
+        venta = self.db.search_venta_by_id(venta_id)
+        cliente_id = self.db.get_venta_detalle(venta[0])
+        cliente_name = self.db.search_customer_by_id(cliente_id[4])
+        user_name = self.db.search_user_by_id(venta[1])
+        
+        if venta:
+            self.current_venta_id = venta[0]  
             
-            self.combo_username.insert(0, proveedor_id[1])
-            self.ent_stock.insert(0, details[1])
+            self.ent_venta_id["state"] = "normal"
+            self.combo_cliente["state"] = "normal"
+            self.ent_usuario["state"] = "normal"
+            self.combo_articulo["state"] = "normal"
+            self.combo_proveedor["state"] = "normal"
+            #self.ent_user_id["state"] = "normal"
+            self.ent_fecha["state"] = "normal"
+            #self.ent_cantidad["state"] = "normal"
+            #self.ent_subtotal["state"] = "disabled"
+            self.ent_total["state"] = "normal"
+            #self.ent_iva['state'] = "disabled"
 
+            self.ent_compra_id.delete(0, END)
+            self.ent_usuario.delete(0, END)
+            self.combo_proveedor.delete(0, END) 
+            self.combo_articulo.delete(0, END)
+            self.ent_fecha.delete(0, END)
+            self.ent_cantidad.delete(0, END)
+            self.ent_subtotal.delete(0, END)
+            self.ent_total.delete(0, END)
+            self.ent_iva.delete(0, END)
+            
+            self.ent_compra_id.insert(0, venta[0])  # venta_id
+            self.ent_usuario.insert(0, user_name[1])   # usuario
+            self.ent_fecha.insert(0, venta[2]) # fecha
+            self.ent_total.insert(0, venta[3]) # total
+        
+            self.lbl_carrito_articulos.delete(0, END)
+
+            details = self.db.get_venta_detalle(venta[0]) 
+            for detail in details:
+                print("Detalle obtenido:", detail) 
+                self.selected_articulos.append(detail)  
+                self.lbl_carrito_articulos.insert(tk.END, f"{"Folio detalle:", detail[0]} {"Compra ID:", detail[1]} {"Articulo ID:", detail[2]} {"Cantidad:", detail[3]} {"Cliente ID:", detail[4]} {"Puntos:", detail[5]}")
+            
+            print("Detalles seleccionados:", self.lbl_carrito_articulos.get(0, tk.END))
+            self.lbl_carrito_articulos.bind('<<ListboxSelect>>', self.on_listbox_select)
+            
             self.disable_buttons([self.btn_new, self.btn_insert])
-            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
-            self.enable_entries()
-            self.ent_search_id["state"] = "normal"
+            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
+            self.ent_compra_id.config(state="normal")
             
-            self.btn_edit["state"] = "normal"
+            self.enable_entries()
+            self.ent_compra_id.config(state="readonly")
         else:
-            messagebox.showinfo("Error", "Articulo no encontrado.")
+            messagebox.showinfo("Error", "Venta no encontrada.")
+    
+    def on_listbox_select(self, event):
+        self.combo_articulo.delete(0, END)
+        self.combo_proveedor.delete(0, END)
+        self.ent_cantidad.delete(0, END)
+        
+        #CHECAR QUE AQUI EN VENTAS LO INDICES SEAN LOS CORRECTOS
+        seleccion_detalle = self.lbl_carrito_articulos.curselection()
+        print("Seleccionado:", seleccion_detalle)
+        if seleccion_detalle:
+            print("Seleccionado:", seleccion_detalle)
+            index = seleccion_detalle[0]
+            print(index)  
+            detail = self.selected_articulos[index] 
+            print("Detalle seleccionado:", detail)
+            articulo_id = detail[2]  
+            print("Articulo_id: ",articulo_id)
+            proveedor = self.db.get_articulo_details(articulo_id)
+            det_id = self.db.get_venta_detalle(detail[1])
+            print(det_id[0][0])
+            self.current_det_id = det_id[0][0]
+            proveedor_data = self.db.search_proveedor_by_id(proveedor[0])
+            self.combo_proveedor.insert(0, proveedor_data[1])  
+            articulo_name = self.db.search_articulo_by_id(articulo_id)
+            self.combo_articulo.insert(0, articulo_name[1])  
+            self.ent_cantidad.insert(0, detail[3])
+            
+            compra_id = self.ent_compra_id.get()
+            cantidad = detail[3]
+            self.cantidad_actual = cantidad
+            
+            stock = self.db.search_venta_detalle_by_id(compra_id, articulo_id)
+            self.actual_stock = stock[3] 
+
 
     def edit(self):
         if not self.validate_fields():
