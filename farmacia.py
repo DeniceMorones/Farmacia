@@ -325,18 +325,22 @@ class DBManager:
         self.conn.commit()
     
     def search_articulo_venta_stock_by_id(self, articulo_id):
-        query = "SELECT existencia FROM det_articulo WHERE articulo_id = %s"
+        query = "SELECT cantidad FROM articulo_stock WHERE articulo_id = %s"
         self.cursor.execute(query, (articulo_id,))
         result = self.cursor.fetchone()
+        print("RESULTADO DE LA BUSQUEDA", result)
+        
         if result:
-            return int(result[0])  
+            return result
         else:
             return None
     
     def save_articulo_stock_venta(self, articulo_id, difference):
         articulo_existente = self.search_articulo_venta_stock_by_id(articulo_id)
-        if articulo_existente is not None:
-            query = "UPDATE articulo_stock SET cantidad WHERE articulo_id = %s"
+        print(f"Articulo existente: {articulo_existente}")
+        
+        if articulo_existente:
+            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
             values = (difference, articulo_id)
             self.cursor.execute(query, values)
             messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
@@ -346,17 +350,17 @@ class DBManager:
             self.cursor.execute(query, values)
             self.conn.commit()
             messagebox.showinfo("Éxito", "Stock insertado con éxito.")
-              
-    
+          
     def update_articulo_venta_stock(self, articulo_id, difference):
         print(f"Diferencia aqui en update stock: {difference}")
         stock = self.get_articulo_compra_stock_by_id(articulo_id)
         
         current_stock = sum(int(row[0]) for row in stock) if stock else 0
+        print("STOCK ACTUAL DEL ARTICULO", current_stock)
         
         new_stock = current_stock - difference
         
-        self.save_articulo_stock_venta(articulo_id, current_stock)
+        self.save_articulo_stock_venta(articulo_id, new_stock)
 
         if new_stock < 0:
             messagebox.showerror("Error", "No hay suficientes piezas en stock.")
@@ -418,6 +422,7 @@ class DBManager:
     def save_venta(self, venta):
         #valor = articulo['descuento'].strip()
         #descuento = int(valor) if valor else None
+        print("TOTAL DE LA VENTA",venta["total"])   
         user_id = self.search_user_by_username(venta['usuario'])
         query = "INSERT INTO ventas (folio_venta, user_id, fecha, total) VALUES (%s, %s, %s, %s)"
         values = (venta['venta_id'], user_id[0], venta['fecha'], venta['total'])
@@ -1858,6 +1863,8 @@ class VentaApp:
         self.user_id = user_id
         self.username = username
         self.selected_articulos = []
+        self.actual_stock = None
+        self.cantidad_actual = None
         self.precios = []
         
         print(self.username)  
@@ -2093,6 +2100,8 @@ class VentaApp:
         iva = subtotal_total * 0.16
         total = subtotal_total + iva
         
+        print(f"Subtotal: {subtotal_total}, IVA: {iva}, Total: {total}")
+        
         venta_id = self.ent_venta_id.get()
         
         self.ent_subtotal.config(state="normal")
@@ -2176,6 +2185,14 @@ class VentaApp:
                         self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
                     
                         self.calculate_total()
+                else:
+                    cantidad_existente = total_existente[3]
+                    cantidad = int(self.ent_cantidad.get())
+                    diferencia = cantidad - cantidad_existente
+                    subtotal_articulo = precio_venta * diferencia
+                    self.precios.append({'subtotal': subtotal_articulo})
+                    
+                    self.calculate_total()
             else:                
                 cantidad_existente = total_existente[3]
                 cantidad = int(self.ent_cantidad.get())
@@ -2194,6 +2211,12 @@ class VentaApp:
                     subtotal_articulo = (precio_venta * cantidad) - descuento
                     self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
                 
+                    self.calculate_total()
+                else:
+                    cantidad = int(self.ent_cantidad.get())
+                    subtotal_articulo = precio_venta * cantidad
+                    self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                    
                     self.calculate_total()
             else:        
                 cantidad = int(self.ent_cantidad.get())
@@ -2222,26 +2245,28 @@ class VentaApp:
             messagebox.showerror("Error", "Articulo no encontrado.")
             return
         
-        puntos_articulo = self.db.search_articulo_by_id(self.combo_articulo.get())
+        articulo_id = self.db.search_articulo_by_name(articulo_nombre)
+        puntos_articulo = self.db.search_articulo_by_id(articulo_id[0])
+        cliente_id = self.db.search_customer_by_name(cliente_name)
         
         ventaDetail = {            
             'folio_venta':self.ent_venta_id.get(),
-            'articulo_id':self.combo_articulo.get(),
+            'articulo_id':articulo_id[0],
             'cantidad':self.ent_cantidad.get(),
-            'cliente_id':self.combo_cliente.get(),
+            'cliente_id':cliente_id[0],
             'puntos': puntos_articulo[5] * int(self.ent_cantidad.get())
         }
         
-        ventaDetail_existente = self.db.search_venta_detalle_by_id(ventaDetail['folio_venta'], ventaDetail['articulo_id'])
+        ventaDetail_existente = self.db.search_venta_detalle_by_id(ventaDetail['folio_venta'], articulo_id[0])
         if ventaDetail_existente:
             self.db.update_venta_detalle(ventaDetail["folio_venta"],ventaDetail["articulo_id"], ventaDetail['cantidad'], ventaDetail['cliente_id'], ventaDetail['puntos'])
         else:
             ventaResponse = self.db.add_venta_detalle(ventaDetail)
-            self.selected_articulos.append((ventaResponse['folio_compra'], ventaResponse['articulo_name'], ventaResponse['cantidad'], ventaResponse['cliente_name'], ventaResponse['puntos']))
-            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", ventaResponse['folio_compra']} {"Articulo:", ventaResponse['articulo_name']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaResponse['cliente_name']} {"Puntos:", ventaResponse['puntos']}")
+            self.selected_articulos.append((ventaResponse['folio_venta'], ventaResponse['articulo_name'], ventaResponse['cantidad'], ventaResponse['cliente_name'], ventaResponse['puntos']))
+            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", ventaResponse['folio_venta']} {"Articulo:", ventaResponse['articulo_name']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaResponse['cliente_name']} {"Puntos:", ventaResponse['puntos']}")
         
         
-        articulo_carrito = self.get_venta_detalle(venta['venta_id'])
+        articulo_carrito = self.db.get_venta_detalle(venta['venta_id'])
         
         if not articulo_carrito:
             messagebox.showerror("Error", "No hay articulos en el carrito.")
@@ -2358,11 +2383,11 @@ class VentaApp:
             self.combo_articulo.insert(0, articulo_name[1])  
             self.ent_cantidad.insert(0, detail[3])
             
-            compra_id = self.ent_compra_id.get()
+            venta_id = self.ent_venta_id.get()
             cantidad = detail[3]
             self.cantidad_actual = cantidad
             
-            stock = self.db.search_venta_detalle_by_id(compra_id, articulo_id)
+            stock = self.db.search_venta_detalle_by_id(venta_id, articulo_id)
             self.actual_stock = stock[3] 
 
 
