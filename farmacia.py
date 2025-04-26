@@ -338,18 +338,13 @@ class DBManager:
     def save_articulo_stock_venta(self, articulo_id, difference):
         articulo_existente = self.search_articulo_venta_stock_by_id(articulo_id)
         print(f"Articulo existente: {articulo_existente}")
+        print(f"Diferencia aqui en save stock: {difference}")
         
-        if articulo_existente:
-            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
-            values = (difference, articulo_id)
-            self.cursor.execute(query, values)
-            messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
-        else:
-            query = "INSERT INTO articulo_stock (articulo_id, cantidad) VALUES (%s, %s)"
-            values = (articulo_id, difference)
-            self.cursor.execute(query, values)
-            self.conn.commit()
-            messagebox.showinfo("Éxito", "Stock insertado con éxito.")
+        query = "INSERT INTO articulo_stock (articulo_id, cantidad) VALUES (%s, %s)"
+        values = (articulo_id, difference)
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        messagebox.showinfo("Éxito", "Stock insertado con éxito.")
           
     def update_articulo_venta_stock(self, articulo_id, difference):
         print(f"Diferencia aqui en update stock: {difference}")
@@ -455,7 +450,31 @@ class DBManager:
         
         venta_id = self.cursor.fetchone()[0]
         
-        self.update_articulo_venta_stock(ventaDetail['articulo_id'], cantidad)  
+        print(f"Diferencia aqui en update stock: {cantidad}")
+        
+        stock = self.get_articulo_compra_stock_by_id(ventaDetail['articulo_id'])
+        
+        articulo_existente = self.search_articulo_venta_stock_by_id(ventaDetail['articulo_id'])
+        
+        if articulo_existente:
+            cantidad_existente = articulo_existente[0]
+            print("Cantidad existente", cantidad_existente)
+            nuevo_stock = cantidad_existente - cantidad
+            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
+            values = (nuevo_stock, ventaDetail['articulo_id'])
+            self.cursor.execute(query, values)
+            messagebox.showinfo("Éxito", "Stock actualizado con éxito.")    
+        else:
+            current_stock = sum(int(row[0]) for row in stock) if stock else 0
+            print("STOCK ACTUAL DEL ARTICULO", current_stock)
+            
+            new_stock = current_stock - cantidad
+            
+            self.save_articulo_stock_venta(ventaDetail["articulo_id"], new_stock)
+
+            if new_stock < 0:
+                messagebox.showerror("Error", "No hay suficientes piezas en stock.")
+                return  
 
         return {
             'folio_venta': venta_id,
