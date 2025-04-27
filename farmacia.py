@@ -301,7 +301,7 @@ class DBManager:
         self.cursor.execute(query, (articulo_id,))
         result = self.cursor.fetchone()
         if result:
-            return int(result[0])  
+            return result 
         else:
             return None
         
@@ -314,14 +314,15 @@ class DBManager:
         
     
     def update_articulo_stock(self, articulo_id, difference):
-        print(f"Diferencia aqui en update stock: {difference}")
+        print(f"Cantidad aqui en update stock: {difference}")
         current_stock = self.get_articulo_stock_by_id(articulo_id)
+        print("STOCK ACTUAL DEL ARTICULO", current_stock)
 
-        current_stock = int(current_stock) if current_stock is not None else 0
+        #current_stock = int(current_stock) if current_stock is not None else 0
 
-        new_stock = current_stock - difference
+        new_stock = current_stock[0] - difference
 
-        if new_stock < 0:
+        if new_stock < 1:
             messagebox.showerror("Error", "No hay suficientes piezas en stock.")
             return
 
@@ -353,19 +354,12 @@ class DBManager:
         messagebox.showinfo("Éxito", "Stock insertado con éxito.")
           
     def update_articulo_venta_stock(self, articulo_id, difference):
-        print(f"Diferencia aqui en update stock: {difference}")
-        stock = self.get_articulo_compra_stock_by_id(articulo_id)
         
-        current_stock = sum(int(row[0]) for row in stock) if stock else 0
-        print("STOCK ACTUAL DEL ARTICULO", current_stock)
-        
-        new_stock = current_stock - difference
-        
-        self.save_articulo_stock_venta(articulo_id, new_stock)
-
-        if new_stock < 0:
-            messagebox.showerror("Error", "No hay suficientes piezas en stock.")
-            return  
+        query = "UPDATE articulo_stock SET cantidad = cantidad - %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
     
     def get_articulo_by_proveedor(self, name):
         proveedor_id = self.get_proveedor_id_by_description(name)
@@ -447,6 +441,7 @@ class DBManager:
     
     def update_venta(self, venta, ventaDetail, actual_stock):
         articulo_id = self.search_articulo_by_name(ventaDetail['articulo'])
+        print("ARTICULO ID",articulo_id[0])
         query0 = "SELECT * FROM det_venta WHERE articulo_id = %s AND folio_venta = %s"
         self.cursor.execute(query0, (articulo_id[0], venta['folio_venta']))
         detalle_compra = self.cursor.fetchone()
@@ -512,6 +507,7 @@ class DBManager:
         stock = self.get_articulo_compra_stock_by_id(ventaDetail['articulo_id'])
         
         articulo_existente = self.search_articulo_venta_stock_by_id(ventaDetail['articulo_id'])
+        print("ARTICULO EXISTENTE", articulo_existente)
         
         if articulo_existente:
             cantidad_existente = articulo_existente[0]
@@ -520,18 +516,7 @@ class DBManager:
             query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
             values = (nuevo_stock, ventaDetail['articulo_id'])
             self.cursor.execute(query, values)
-            messagebox.showinfo("Éxito", "Stock actualizado con éxito.")    
-        else:
-            current_stock = sum(int(row[0]) for row in stock) if stock else 0
-            print("STOCK ACTUAL DEL ARTICULO", current_stock)
-            
-            new_stock = current_stock - cantidad
-            
-            self.save_articulo_stock_venta(ventaDetail["articulo_id"], new_stock)
-
-            if new_stock < 0:
-                messagebox.showerror("Error", "No hay suficientes piezas en stock.")
-                return  
+            messagebox.showinfo("Éxito", "Stock actualizado con éxito.")      
 
         return {
             'folio_venta': venta_id,
@@ -687,9 +672,34 @@ class DBManager:
         values = (compraDetail['folio_compra'], compraDetail['articulo_id'], cantidad)      
         self.cursor.execute(query, values)
         self.conn.commit()
+        compra_id = self.cursor.fetchone()
         
-        compra_id = self.cursor.fetchone()[0]
+        venta_stock = self.search_articulo_venta_stock_by_id(compraDetail['articulo_id'])
+        print("ARTICULO EXISTENTE", venta_stock)
+        if venta_stock:
+            cantidad_existente = venta_stock[0]
+            print("Cantidad existente", cantidad_existente)
+            nuevo_stock = cantidad_existente + cantidad
+            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
+            values = (nuevo_stock, compraDetail['articulo_id'])
+            self.cursor.execute(query, values)
+            messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
+        else:
+            stock = self.get_articulo_compra_stock_by_id(compraDetail['articulo_id'])
+            
+            current_stock = sum(int(row[0]) for row in stock) if stock else 0
+            print("STOCK ACTUAL DEL ARTICULO", current_stock)
+            
+            new_stock = current_stock + cantidad
+            
+            self.save_articulo_stock_venta(compraDetail["articulo_id"], new_stock)
+
+            if new_stock < 0:
+                messagebox.showerror("Error", "No hay suficientes piezas en stock.")
+                return
         
+        
+        print(f"cantidad a comprar: {cantidad}")
         self.update_articulo_stock(compraDetail['articulo_id'], cantidad)  
 
         return {
@@ -2351,8 +2361,7 @@ class VentaApp:
         else:
             ventaResponse = self.db.add_venta_detalle(ventaDetail)
             self.selected_articulos.append((ventaResponse['folio_venta'], ventaResponse['articulo_name'], ventaResponse['cantidad'], ventaResponse['cliente_name'], ventaResponse['puntos']))
-            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", ventaResponse['folio_venta']} {"Articulo:", ventaResponse['articulo_name']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaResponse['cliente_name']} {"Puntos:", ventaResponse['puntos']}")
-        
+            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio detalle:", ventaResponse['folio_venta']} {"Folio venta:", venta['venta_id']} {"Articulo:", ventaDetail['articulo_id']} {"Cantidad:", ventaResponse['cantidad']} {"Cliente:", ventaDetail['cliente_id']} {"Puntos:", ventaResponse['puntos']}")
         
         articulo_carrito = self.db.get_venta_detalle(venta['venta_id'])
         
@@ -2391,6 +2400,9 @@ class VentaApp:
         self.clear_folio_entry()
         
         venta = self.db.search_venta_by_id(venta_id)
+        if not venta:
+            messagebox.showinfo("Error", "Venta no encontrada.")
+            return
         cliente_id = self.db.get_venta_detalle(venta[0])
         print("DETALLE DE VENTA:", cliente_id)
         print("CLIENTE ID:", cliente_id[0][4])
