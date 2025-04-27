@@ -143,9 +143,15 @@ class DBManager:
     
     def update_cliente_puntos(self, cliente_name, puntos):
         cliente_id = self.search_customer_by_name(cliente_name)
-        query = "UPDATE clientes SET puntos = %s WHERE cliente_id = %s"
-        values = (puntos, cliente_id[0])
-        self.cursor.execute(query, values)
+        query = "SELECT puntos FROM clientes WHERE cliente_id = %s" 
+        self.cursor.execute(query, (cliente_id[0],))
+        result = self.cursor.fetchone()
+        puntos_actuales = int(result[0])
+        puntos = puntos_actuales + puntos
+                
+        query2 = "UPDATE clientes SET puntos = %s WHERE cliente_id = %s"
+        values2 = (puntos, cliente_id[0])
+        self.cursor.execute(query2, values2)
         self.conn.commit()
         
     def get_cliente_puntos(self, cliente_id):
@@ -429,6 +435,47 @@ class DBManager:
         self.cursor.execute(query, (folio_venta,))
         self.conn.commit()
     
+    def update_venta(self, venta, ventaDetail, actual_stock):
+        articulo_id = self.search_articulo_by_name(ventaDetail['articulo'])
+        query0 = "SELECT * FROM det_venta WHERE articulo_id = %s AND folio_venta = %s"
+        self.cursor.execute(query0, (articulo_id[0], venta['folio_venta']))
+        detalle_compra = self.cursor.fetchone()
+        print(detalle_compra)       
+        
+        user_id = self.search_user_by_username(venta['usuario'])
+        query = "UPDATE ventas SET user_id=%s, fecha=%s, total=%s WHERE folio_venta=%s"
+        values = (user_id[0], venta['fecha'], venta['total'], venta['folio_venta'])
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        
+        if ventaDetail:
+            cantidad_nueva = int(ventaDetail['cantidad'])    
+            cantidad_existente = actual_stock
+            print("Cantidad existente", cantidad_existente)
+            
+            print("Cantidad nueva", cantidad_nueva)
+            
+            #CHECAR QUE SEA EN EL STOCK DE VENTAS
+                        
+            if cantidad_nueva > cantidad_existente:  
+                diferencia = cantidad_nueva - cantidad_existente
+                self.update_articulo_venta_stock(articulo_id[0], diferencia)
+            elif cantidad_nueva < cantidad_existente:
+                diferencia = cantidad_existente - cantidad_nueva
+                self.update_articulo_venta_stock(articulo_id[0], -diferencia)
+            print(diferencia)
+            
+            print(f'Cantidad existente: {cantidad_existente}, Cantidad nueva: {cantidad_nueva}, Diferencia: {diferencia}') 
+            
+            query2 = "UPDATE det_venta SET articulo_id = %s, cantidad = %s WHERE det_id_venta = %s AND folio_venta = %s"
+            values2 = (articulo_id[0], ventaDetail['cantidad'], ventaDetail['det_id_venta'], ventaDetail['venta_id'])
+            self.cursor.execute(query2, values2)
+            self.conn.commit()
+            
+            #cantidad = int(compraDetail['cantidad'])
+            
+            #self.update_articulo_stock(articulo_id[0], cantidad)  
+    
     def get_next_venta_id(self):
         query = "SELECT MAX(folio_venta) FROM ventas"
         self.cursor.execute(query)
@@ -508,6 +555,12 @@ class DBManager:
         self.cursor.execute(query, (articulo_id,))
         articuloDetail = self.cursor.fetchone()
         return articuloDetail
+    
+    def update_venta_detalle(self, venta_id, articulo_id, cantidad, cliente_id, puntos):    
+        query = "UPDATE det_venta SET cantidad = %s WHERE folio_venta = %s AND articulo_id = %s AND cliente_id = %s AND puntos = %s"
+        values = (cantidad, venta_id, articulo_id, cliente_id, puntos)
+        self.cursor.execute(query, values)
+        self.conn.commit()
 
     def delete_all_detalles_venta(self, folio_venta):
         query = "DELETE FROM det_venta WHERE folio_venta = %s"
@@ -2298,9 +2351,9 @@ class VentaApp:
         self.db.update_cliente_puntos(venta['cliente'], total_puntos)
         #self.db.add_venta_detalle(ventaDetail)
     
-        self.clear_entries()
-        self.disable_entries()
-        self.disable_buttons([self.btn_insert, self.btn_cancel])
+        #self.clear_entries()
+        #self.disable_entries()
+        #self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
 
     def cancel(self):
@@ -2323,7 +2376,9 @@ class VentaApp:
         
         venta = self.db.search_venta_by_id(venta_id)
         cliente_id = self.db.get_venta_detalle(venta[0])
-        cliente_name = self.db.search_customer_by_id(cliente_id[4])
+        print("DETALLE DE VENTA:", cliente_id)
+        print("CLIENTE ID:", cliente_id[0][4])
+        cliente_name = self.db.search_customer_by_id(cliente_id[0][4])  
         user_name = self.db.search_user_by_id(venta[1])
         
         if venta:
@@ -2341,8 +2396,9 @@ class VentaApp:
             self.ent_total["state"] = "normal"
             #self.ent_iva['state'] = "disabled"
 
-            self.ent_compra_id.delete(0, END)
+            self.ent_venta_id.delete(0, END)
             self.ent_usuario.delete(0, END)
+            self.combo_cliente.delete(0, END)
             self.combo_proveedor.delete(0, END) 
             self.combo_articulo.delete(0, END)
             self.ent_fecha.delete(0, END)
@@ -2351,8 +2407,9 @@ class VentaApp:
             self.ent_total.delete(0, END)
             self.ent_iva.delete(0, END)
             
-            self.ent_compra_id.insert(0, venta[0])  # venta_id
+            self.ent_venta_id.insert(0, venta[0])  # venta_id
             self.ent_usuario.insert(0, user_name[1])   # usuario
+            self.combo_cliente.insert(0, cliente_name[2])  # cliente
             self.ent_fecha.insert(0, venta[2]) # fecha
             self.ent_total.insert(0, venta[3]) # total
         
@@ -2369,10 +2426,10 @@ class VentaApp:
             
             self.disable_buttons([self.btn_new, self.btn_insert])
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
-            self.ent_compra_id.config(state="normal")
+            self.ent_venta_id.config(state="normal")
             
             self.enable_entries()
-            self.ent_compra_id.config(state="readonly")
+            self.ent_venta_id.config(state="readonly")
         else:
             messagebox.showinfo("Error", "Venta no encontrada.")
     
@@ -2413,26 +2470,83 @@ class VentaApp:
     def edit(self):
         if not self.validate_fields():
             return
+               
+        articulo_nombre = self.combo_articulo.get()
+        articulo = self.db.search_articulo_by_name(articulo_nombre)
+        cliente_name = self.combo_cliente.get()
+        cliente_id = self.db.search_customer_by_name(cliente_name)
+        venta_id = self.ent_venta_id.get()
+        precio_venta = int(articulo[3])
         
-        articulo = {
-            'articulo_id': self.ent_articulo_id.get(),
-            'descripcion': self.ent_descripcion.get(),
-            'precio_unitario': self.ent_preciouni.get(),
-            'precio_venta': self.ent_precioven.get(),
-            'descuento': self.ent_descuento.get(),
-            'puntos':self.ent_puntos.get()
-            
+        cantidad_actual = int(self.ent_cantidad.get())
+        print("Cantidad actual:", cantidad_actual)
+        detalle_encontrado = self.db.search_articulo_venta_stock_by_id(articulo[0])
+        cantidad_en_bd = detalle_encontrado[0]
+        print("Cantidad en bd:", cantidad_en_bd)
+        diferencia_cantidades = 0
+        
+        if cantidad_actual > cantidad_en_bd:
+            diferencia_cantidades = cantidad_actual - cantidad_en_bd
+            #self.db.update_articulo_stock(articulo[0], -diferencia_cantidades)
+            print("Diferencia de cantidades si cantidad actual es mayor:", diferencia_cantidades)
+            #self.db.update_articulo_stock(articulo[0], diferencia_cantidades)
+        #diferencia_cantidades = cantidad_actual - cantidad_en_bd
+        
+        
+        total_existente = self.db.search_venta_by_id(self.ent_venta_id.get())
+        print("Total devuelto de compras:", total_existente)
+        if total_existente:
+            total = total_existente[3]
+            print("Total existente:", total)            
+            if cantidad_actual < cantidad_en_bd:
+                diferencia_cantidades = cantidad_en_bd - cantidad_actual
+                subtotal_articulo = total - (precio_venta * (-1 * diferencia_cantidades))
+                print("Subtotal articulo:", subtotal_articulo)
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                  
+                self.calculate_total() 
+            else:            
+                subtotal_articulo = total + (precio_venta * diferencia_cantidades)
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                print("Subtotal articulo en else:", subtotal_articulo)  
+                self.calculate_total()
+        else:
+            subtotal_articulo = precio_venta * cantidad_actual
+            self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO            
+            self.calculate_total()
+        
+        venta = {
+            'folio_venta': self.ent_venta_id.get(),
+            'usuario': self.ent_usuario.get(),
+            'articulo': self.combo_articulo.get(),            
+            'cantidad': self.ent_cantidad.get(),
+            'fecha': self.ent_fecha.get(),
+            'total': self.ent_total.get()
         }
         
-        articuloDetail = {            
-            'proveedor_id':self.combo_username.get(),
-            'articulo_id':self.ent_articulo_id.get(),
-            'precio':self.ent_precioven.get(),
-            'existencia':self.ent_stock.get()
+        ventaDetail = {
+            'det_id_venta': self.current_det_id,
+            'venta_id': self.ent_venta_id.get(),
+            'articulo': self.combo_articulo.get(),
+            'cantidad': self.ent_cantidad.get(),
+            'cliente': cliente_id[0],
+            'puntos': articulo[5] * int(self.ent_cantidad.get())    
         }
         
-        self.db.update_articulo(articulo, articuloDetail)
-        messagebox.showinfo("Éxito", "Articulo actualizado con éxito.")
+        articulo_id = self.db.search_articulo_by_name(ventaDetail["articulo"])
+        ventaDetail_existente = self.db.search_venta_detalle_by_id(ventaDetail["venta_id"], articulo_id[0])
+        if ventaDetail_existente:
+            self.db.update_venta_detalle(ventaDetail["venta_id"], articulo_id[0], ventaDetail['cantidad'], ventaDetail['cliente'], ventaDetail['puntos'])
+        
+        self.db.update_venta(venta, ventaDetail, self.actual_stock)
+        
+        #CHECAR ESTOS EN UN FUTURO POR SI LLEGA A DAR ERROR
+        self.precios = []
+        self.actual_stock = None
+        self.cantidad_actual = None
+               
+        messagebox.showinfo("Éxito", "Compra actualizada con éxito.")
+        self.current_det_id = None
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
@@ -2514,6 +2628,13 @@ class VentaApp:
         self.ent_subtotal["state"] = "disabled"
         self.ent_total["state"] = "disabled"
         self.ent_iva['state'] = "disabled"
+    
+    def clear_folio_entry(self):
+        #self.clear_folio_entry()
+        self.ent_venta_id.config(state="normal")
+
+        self.ent_venta_id.delete(0, END)
+        self.ent_venta_id.config(state="readonly")
 
     def open_venta_menu(self):
             venta_window = tk.Tk()
