@@ -387,6 +387,16 @@ class DBManager:
         
         return real_result
     
+    def get_all_articulo(self):
+    
+        query = "SELECT * FROM articulos"
+        self.cursor.execute(query,)
+        result = self.cursor.fetchall()
+        
+        return result
+        
+
+    
     #VENTAS
     #################################################################
 
@@ -541,6 +551,12 @@ class DBManager:
         query = "SELECT * FROM det_venta WHERE folio_venta = %s"
         self.cursor.execute(query, (folio_venta,))
         ventaDetail = self.cursor.fetchall()
+        return ventaDetail
+    
+    def get_venta_detalle_by_articulo(self, articulo_id):
+        query = "SELECT * FROM det_venta WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        ventaDetail = self.cursor.fetchone()
         return ventaDetail
       
     def delete_venta_detalle(self, folio_venta, articulo_id, cantidad, cliente_id, puntos):
@@ -1976,11 +1992,11 @@ class VentaApp:
         self.ent_usuario.place(x=180, y=120)
         self.ent_usuario.insert(0, self.username)
         
-        self.lbl_proveedor = tk.Label(root, text="Proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
+        '''self.lbl_proveedor = tk.Label(root, text="Proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_proveedor.place(x=20, y=160) 
         self.combo_proveedor = ttk.Combobox(root, font=self.font)
         self.combo_proveedor.place(x=180, y=160)
-        self.combo_proveedor.bind("<<ComboboxSelected>>", lambda e: self.load_articulo_data())
+        self.combo_proveedor.bind("<<ComboboxSelected>>", lambda e: self.load_articulo_data())'''
                
         self.lbl_articulo= tk.Label(root, text="Articulo:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_articulo.place(x=20, y=200)  
@@ -1998,8 +2014,8 @@ class VentaApp:
         self.ent_fecha.place(x=180, y=280)
         
         self.load_cliente_data()
-        self.load_proveedor_data()
-        #self.load_articulo_data()
+        #self.load_proveedor_data()
+        self.load_articulo_data()
 
         #como ID del proveedor
         #self.lbl_user_id = tk.Label(root, text="ID proveedor:", font=self.font, bg="#ffffff", fg="#03012C")
@@ -2388,7 +2404,7 @@ class VentaApp:
             self.combo_cliente["state"] = "normal"
             self.ent_usuario["state"] = "normal"
             self.combo_articulo["state"] = "normal"
-            self.combo_proveedor["state"] = "normal"
+            #self.combo_proveedor["state"] = "normal"
             #self.ent_user_id["state"] = "normal"
             self.ent_fecha["state"] = "normal"
             #self.ent_cantidad["state"] = "normal"
@@ -2399,7 +2415,7 @@ class VentaApp:
             self.ent_venta_id.delete(0, END)
             self.ent_usuario.delete(0, END)
             self.combo_cliente.delete(0, END)
-            self.combo_proveedor.delete(0, END) 
+            #self.combo_proveedor.delete(0, END) 
             self.combo_articulo.delete(0, END)
             self.ent_fecha.delete(0, END)
             self.ent_cantidad.delete(0, END)
@@ -2435,7 +2451,7 @@ class VentaApp:
     
     def on_listbox_select(self, event):
         self.combo_articulo.delete(0, END)
-        self.combo_proveedor.delete(0, END)
+        #self.combo_proveedor.delete(0, END)
         self.ent_cantidad.delete(0, END)
         
         #CHECAR QUE AQUI EN VENTAS LO INDICES SEAN LOS CORRECTOS
@@ -2454,7 +2470,7 @@ class VentaApp:
             print(det_id[0][0])
             self.current_det_id = det_id[0][0]
             proveedor_data = self.db.search_proveedor_by_id(proveedor[0])
-            self.combo_proveedor.insert(0, proveedor_data[1])  
+            #self.combo_proveedor.insert(0, proveedor_data[1])  
             articulo_name = self.db.search_articulo_by_id(articulo_id)
             self.combo_articulo.insert(0, articulo_name[1])  
             self.ent_cantidad.insert(0, detail[3])
@@ -2480,8 +2496,9 @@ class VentaApp:
         
         cantidad_actual = int(self.ent_cantidad.get())
         print("Cantidad actual:", cantidad_actual)
-        detalle_encontrado = self.db.search_articulo_venta_stock_by_id(articulo[0])
-        cantidad_en_bd = detalle_encontrado[0]
+        detalle_encontrado = self.db.get_venta_detalle_by_articulo(articulo[0])
+        print("Detalle encontrado:", detalle_encontrado)
+        cantidad_en_bd = detalle_encontrado[3]
         print("Cantidad en bd:", cantidad_en_bd)
         diferencia_cantidades = 0
         
@@ -2500,6 +2517,7 @@ class VentaApp:
             print("Total existente:", total)            
             if cantidad_actual < cantidad_en_bd:
                 diferencia_cantidades = cantidad_en_bd - cantidad_actual
+                print("Diferencia de cantidades si cantidad actual es menor:", diferencia_cantidades)
                 subtotal_articulo = total - (precio_venta * (-1 * diferencia_cantidades))
                 print("Subtotal articulo:", subtotal_articulo)
                 self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
@@ -2569,7 +2587,7 @@ class VentaApp:
             not self.ent_venta_id.get()
             or not self.combo_cliente.get()
             or not self.ent_usuario.get()
-            or not self.combo_proveedor.get()
+            #or not self.combo_proveedor.get()
             or not self.combo_articulo.get()
             or not self.ent_cantidad.get()
             or not self.ent_fecha.get()
@@ -2598,7 +2616,7 @@ class VentaApp:
         #self.ent_usuario.delete(0, END)
         self.combo_articulo.delete(0, END)
         #self.ent_user_id.delete(0, END)
-        self.combo_proveedor.delete(0, END)
+        #self.combo_proveedor.delete(0, END)
         self.ent_fecha.delete(0, END)
         self.ent_cantidad.delete(0, END)
         self.ent_subtotal.delete(0, END)
@@ -2649,16 +2667,17 @@ class VentaApp:
         clientes_names = [cliente[2] for cliente in clientes]
         self.combo_cliente['values'] = clientes_names
     
-    def load_proveedor_data(self):
+    '''def load_proveedor_data(self):
         proveedores = self.db.get_all_proveedores()
         proveedores_names = [proveedor[1] for proveedor in proveedores]
-        self.combo_proveedor['values'] = proveedores_names
+        self.combo_proveedor['values'] = proveedores_names'''
         
     def load_articulo_data(self):
-        proveedor = self.combo_proveedor.get()
-        print(proveedor)
-        articulos = self.db.get_articulo_by_proveedor(proveedor)
-        articulos_names = [articulo[0] for articulo in articulos]
+        
+        #proveedor = self.combo_proveedor.get()
+        #print(proveedor)
+        articulos = self.db.get_all_articulo()
+        articulos_names = [articulo[1] for articulo in articulos]
         self.combo_articulo['values'] = articulos_names
 
 class CompraApp:
