@@ -238,7 +238,7 @@ class DBManager:
         articulo = self.cursor.fetchone()
         return articulo
     
-    def update_articulo(self, articulo, articuloDetail):
+    def update_articulo_in_articulos(self, articulo, articuloDetail):
         query = "UPDATE articulos SET descripcion=%s, precio_unitario=%s, precio_venta=%s, puntos=%s WHERE articulo_id=%s"
         values = (articulo['descripcion'], articulo['precio_unitario'], articulo['precio_venta'], articulo['puntos'], articulo['articulo_id'])
         self.cursor.execute(query, values)
@@ -530,6 +530,7 @@ class DBManager:
         query = "SELECT * FROM det_venta WHERE folio_venta = %s AND articulo_id = %s"
         self.cursor.execute(query, (venta_id, articulo_id))
         detalle = self.cursor.fetchone()
+        print("DETALLE DE LA VENTA", detalle)
         return detalle
         
     def get_venta_detalle(self, folio_venta):
@@ -1858,7 +1859,7 @@ class ArticuloApp:
             'existencia':self.ent_stock.get()
         }
         
-        self.db.update_articulo(articulo, articuloDetail)
+        self.db.update_articulo_in_articulos(articulo, articuloDetail)
         messagebox.showinfo("Éxito", "Articulo actualizado con éxito.")
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel])
@@ -2047,7 +2048,9 @@ class VentaApp:
         self.lbl_iva = tk.Label(root, text="IVA:", font=self.font, bg="#ffffff", fg="#03012C")
         self.lbl_iva.place(x=20, y=400)  
         self.ent_iva= tk.Entry(root, font=self.font, state="disabled")
-        self.ent_iva.place(x=180, y=400)    
+        self.ent_iva.place(x=180, y=400)
+        
+           
 
         self.btn_insert = tk.Button(
             root, 
@@ -2103,7 +2106,7 @@ class VentaApp:
         )
         self.btn_delete.place(x=460, y=440)  
 
-        self.lbl_carrito_articulos=tk.Listbox(root, font=self.font)
+        self.lbl_carrito_articulos=tk.Listbox(root, font=self.font, width=45)
         self.lbl_carrito_articulos.place(x=20, y=520)
         self.btn_agregar_articulo = tk.Button(
             root, 
@@ -2124,7 +2127,17 @@ class VentaApp:
             fg="white"
         )
         self.btn_quitar_articulo.place(x=120, y=800)
-
+        
+        self.btn_limpiar = tk.Button(
+                    root, 
+                    text="Limpiar", 
+                    command=self.clear_all_entries, 
+                    font=self.button_font, 
+                    bg="#86BBD8", 
+                    fg="white"
+                )
+        self.btn_limpiar.place(x=450, y=350) 
+        
         self.setup_buttons()  
     
     def validate_name(self, name):
@@ -2155,6 +2168,7 @@ class VentaApp:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         self.ent_fecha.delete(0, END)
         self.ent_fecha.insert(0, today)
+        self.ent_fecha.config(state="disabled")
 
     def insert_detalle(self):
         articulo_nombre = self.combo_articulo.get()
@@ -2474,7 +2488,7 @@ class VentaApp:
             index = seleccion_detalle[0]
             print(index)  
             detail = self.selected_articulos[index] 
-            print("Detalle seleccionado:", detail)
+            print("Detalle  folio venta:", detail[1])
             articulo_id = detail[2]  
             print("Articulo_id: ",articulo_id)
             proveedor = self.db.get_articulo_details(articulo_id)
@@ -2492,7 +2506,9 @@ class VentaApp:
             self.cantidad_actual = cantidad
             
             stock = self.db.search_venta_detalle_by_id(venta_id, articulo_id)
-            self.actual_stock = stock[3] 
+            print("Stock encontrado:", stock)
+            self.actual_stock = stock[3]
+            detail = None 
 
 
     def edit(self):
@@ -2635,6 +2651,26 @@ class VentaApp:
         self.ent_total.delete(0, END)
         self.ent_iva.delete(0, END)
         #self.ent_user_id.delete(0, END)
+    
+    def clear_all_entries(self):
+        self.ent_venta_id["state"] = "normal"
+        self.ent_venta_id.delete(0, END)
+        self.ent_venta_id["state"] = "readonly"
+        self.combo_cliente.delete(0, END)
+        self.ent_usuario.delete(0, END)
+        self.combo_articulo.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+        #self.combo_proveedor.delete(0, END)
+        self.ent_fecha.delete(0, END)
+        self.ent_cantidad.delete(0, END)
+        self.ent_subtotal.delete(0, END)
+        self.ent_total["state"] = "normal"        
+        self.ent_total.delete(0, END)
+        self.ent_iva["state"] = "disabled"
+        self.ent_iva.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+        self.lbl_carrito_articulos.delete(0, END)
+        self.selected_articulos.clear()
 
     def enable_entries(self):
         self.ent_venta_id["state"] = "normal"
@@ -2889,6 +2925,7 @@ class CompraApp:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         self.ent_fecha.delete(0, END)
         self.ent_fecha.insert(0, today)
+        self.ent_fecha.config(state="disabled")
 
     def insert_detalle(self):
         articulo_nombre = self.combo_articulo.get()
