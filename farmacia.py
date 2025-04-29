@@ -361,6 +361,14 @@ class DBManager:
         self.conn.commit()
         messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
     
+    def update_articulo_venta_stock_delete(self, articulo_id, difference):
+        
+        query = "UPDATE articulo_stock SET cantidad = cantidad + %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
+    
     def get_articulo_by_proveedor(self, name):
         proveedor_id = self.get_proveedor_id_by_description(name)
     
@@ -741,6 +749,22 @@ class DBManager:
         values = (cantidad, compra_id, articulo_id)
         self.cursor.execute(query, values)
         self.conn.commit()
+        
+        cantidad_nueva = int(cantidad)
+        
+        venta_stock = self.search_articulo_venta_stock_by_id(articulo_id)
+        print("ARTICULO EXISTENTE EN UPDATE", venta_stock)
+        if venta_stock:
+            cantidad_existente = venta_stock[0]
+            print("Cantidad existente en update", cantidad_existente)
+            diferencia = cantidad_nueva - cantidad_existente
+            print("Cantidad existente en update", cantidad_existente)
+            nuevo_stock = diferencia + cantidad_existente
+            print("Nuevo stock en update", nuevo_stock)
+            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
+            values = (nuevo_stock, articulo_id)
+            self.cursor.execute(query, values)
+            messagebox.showinfo("Éxito", "Stock actualizado con éxito en update.")
         
     def search_compra_detalle_by_folio(self, folio_compra):
         query = "SELECT * FROM det_compra WHERE folio_compra = %s"
@@ -2258,7 +2282,7 @@ class VentaApp:
                 self.selected_articulos.pop()
                 self.lbl_carrito_articulos.delete(tk.END)
                 
-                self.db.update_articulo_stock(articulo_id[0], -last_detail[2])
+                self.db.update_articulo_venta_stock_delete(articulo_id[0], -last_detail[2])
                 
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
             else:
@@ -2398,10 +2422,25 @@ class VentaApp:
     def cancel(self):
         venta_id = self.ent_venta_id.get()
         saved_venta = self.db.search_venta_by_id(venta_id)
+        
+        if not venta_id:
+            messagebox.showerror("Error", "Debe ingresar un ID de venta.")
+            return
+            
         if saved_venta:
+            detalles_venta = self.db.get_venta_detalle(venta_id)  
+
+            if detalles_venta:
+                for detalle in detalles_venta:
+                    articulo_id = detalle[2]  
+                    cantidad_vendida = detalle[3]
+                    print("Cantidad vendida", cantidad_vendida) 
+                    self.db.update_articulo_venta_stock_delete(articulo_id, -cantidad_vendida)
+                    
             self.db.delete_venta(saved_venta[0])
             self.db.delete_all_detalles_venta(venta_id)
-            messagebox.showinfo("Éxito", "Venta cancelada con éxito.")
+        
+        messagebox.showinfo("Éxito", "Venta cancelada con éxito.")
         
         self.clear_entries()
         self.disable_entries()
@@ -2599,12 +2638,24 @@ class VentaApp:
         self.clear_entries()
 
     def delete(self):
-        if not self.ent_articulo_id.get():
-            messagebox.showerror("Error", "Debe ingresar un ID de articulo.")
+        venta_id = self.ent_venta_id.get()
+        if not venta_id:
+            messagebox.showerror("Error", "Debe ingresar un ID de venta.")
             return
-        articulo_id = self.ent_articulo_id.get()
-        self.db.delete_articulo(articulo_id)
-        messagebox.showinfo("Éxito", "Articulo eliminado con éxito.")
+
+        detalles_venta = self.db.get_venta_detalle(venta_id)  
+
+        if detalles_venta:
+            for detalle in detalles_venta:
+                articulo_id = detalle[2]  
+                cantidad_vendida = detalle[3] 
+                self.db.update_articulo_venta_stock_delete(articulo_id, -cantidad_vendida)
+
+        self.db.delete_venta(venta_id)
+        self.db.delete_all_detalles_venta(venta_id)
+
+        messagebox.showinfo("Éxito", "Venta y sus detalles eliminados con éxito.")
+        
         self.clear_entries()
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
@@ -3244,7 +3295,7 @@ class CompraApp:
         articulo_id = self.db.search_articulo_by_name(compraDetail["articulo"])
         compraDetail_existente = self.db.search_compra_detalle_by_id(compraDetail["compra_id"], articulo_id[0])
         if compraDetail_existente:
-            self.db.update_compra_detalle(compraDetail["compra_id"], articulo_id[0], compraDetail['cantidad'])
+            self.db.update_compra_detalle(compraDetail["compra_id"], articulo_id[0], compraDetail['cantidad'] )
         
         self.db.update_compra(compra, compraDetail, self.actual_stock)
         
