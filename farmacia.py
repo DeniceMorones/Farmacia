@@ -368,6 +368,11 @@ class DBManager:
         self.cursor.execute(query, values)
         self.conn.commit()
         messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
+        
+    def delete_articulo_venta_stock(self, articulo_id):
+        query = "DELETE FROM articulo_stock WHERE articulo_id = %s"
+        self.cursor.execute(query, (articulo_id,))
+        self.conn.commit()
     
     def get_articulo_by_proveedor(self, name):
         proveedor_id = self.get_proveedor_id_by_description(name)
@@ -497,6 +502,8 @@ class DBManager:
             return 1
         else:
             return max_id + 1
+        
+
     
     def add_venta_detalle(self, ventaDetail):
         articulo_name = self.get_articulo_name_by_id(ventaDetail['articulo_id'])
@@ -3131,9 +3138,20 @@ class CompraApp:
         compra_id = self.ent_compra_id.get()
         saved_compra = self.db.search_compra_by_id(compra_id)
         if saved_compra:
+            detalles_compra = self.db.get_compra_detalle(compra_id)
+            for detalle in detalles_compra:
+                articulo_id = detalle[2]  
+                cantidad_vendida = detalle[3] 
+                self.db.update_articulo_stock(articulo_id, -cantidad_vendida)
+                cantidad_articulo_venta = self.db.search_articulo_venta_stock_by_id(articulo_id)    
+                if cantidad_articulo_venta:
+                    self.db.update_articulo_venta_stock(articulo_id, cantidad_articulo_venta)
+            
+                
             self.db.delete_compra(saved_compra[0])
             self.db.delete_all_detalles(compra_id)
             messagebox.showinfo("Éxito", "Compra cancelada con éxito.")
+        
             
         self.clear_entries()
         self.disable_entries()
@@ -3317,6 +3335,13 @@ class CompraApp:
             messagebox.showerror("Error", "Debe ingresar un ID de compra.")
             return
         compra_id = self.ent_compra_id.get()
+        detalles_compra = self.db.get_compra_detalle(compra_id)
+        for detalle in detalles_compra:
+            articulo_id = detalle[2]  
+            cantidad_vendida = detalle[3] 
+            self.db.update_articulo_stock(articulo_id, -cantidad_vendida)
+        
+        self.db.delete_articulo_venta_stock(articulo_id)
         self.db.delete_compra(compra_id)
         messagebox.showinfo("Éxito", "Compra eliminada con éxito.")
         self.clear_entries()
