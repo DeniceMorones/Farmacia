@@ -2656,7 +2656,7 @@ class VentaApp:
             for detalle in detalles_venta:
                 articulo_id = detalle[2]  
                 cantidad_vendida = detalle[3] 
-                self.db.update_articulo_venta_stock_delete(articulo_id, -cantidad_vendida)
+                self.db.update_articulo_venta_stock_delete(articulo_id, cantidad_vendida)
 
         self.db.delete_venta(venta_id)
         self.db.delete_all_detalles_venta(venta_id)
@@ -3034,6 +3034,7 @@ class CompraApp:
                 self.lbl_carrito_articulos.delete(tk.END)
                 
                 self.db.update_articulo_stock(articulo_id[0], -last_detail[2])
+                self.db.update_articulo_venta_stock_delete(articulo_id[0], -last_detail[2])
                 
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
             else:
@@ -3145,7 +3146,7 @@ class CompraApp:
                 self.db.update_articulo_stock(articulo_id, -cantidad_vendida)
                 cantidad_articulo_venta = self.db.search_articulo_venta_stock_by_id(articulo_id)    
                 if cantidad_articulo_venta:
-                    self.db.update_articulo_venta_stock(articulo_id, cantidad_articulo_venta)
+                    self.db.update_articulo_venta_stock_delete(articulo_id, -cantidad_vendida)
             
                 
             self.db.delete_compra(saved_compra[0])
