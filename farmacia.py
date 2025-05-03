@@ -61,7 +61,7 @@ class DBManager:
     
     def save_user(self, user):
         query = "INSERT INTO usuarios (nombre, password, perfil) VALUES (%s, %s, %s)"
-        values = (user['nombre'], user['password'], user['perfil'])
+        values = (user['name'], user['password'], user['profile'])
         self.cursor.execute(query, values)
         self.conn.commit()
         
@@ -911,6 +911,8 @@ class App:
 
         self.current_user_id = self.db.get_next_user_id()
         self.ent_user_id.insert(0, self.current_user_id)
+        self.ent_user_id["state"] = "readonly"
+        self.ent_user_id["state"] = "disabled"    
 
     def insert(self):
         if not self.validate_fields():
@@ -950,6 +952,9 @@ class App:
             self.ent_profile.set("")
 
             self.ent_user_id.insert(0, user[0])
+            self.ent_user_id["state"] = "readonly"
+            self.ent_user_id["state"] = "disabled" 
+            
             self.ent_name.insert(0, user[1])
             self.ent_password.insert(0, user[2])
             self.ent_profile.set(user[3])
@@ -999,7 +1004,7 @@ class App:
         if (
             not self.ent_user_id.get()
             or not self.ent_name.get()
-            or not self.ent_username.get()
+           #or not self.ent_username.get()
             or not self.ent_password.get()
             or not self.ent_profile.get()
         ):
@@ -1039,7 +1044,7 @@ class App:
         self.ent_profile["state"] = "disabled"
 
 class CustomerApp:
-    def __init__(self, root, db, user_id, username):
+    def __init__(self, root, db, user_id, username=None):
         self.root = root
         self.root.title("Clientes")
         self.db = db
@@ -1163,9 +1168,13 @@ class CustomerApp:
         return name.replace(" ", "").isalpha()  
     
     def setup_buttons(self):
-        if self.username in ["Secre", "Mecanico"]:
+        print("user", self.username)
+        user = self.db.search_user_by_username(self.username)
+        print("user", user[3])
+        if user[3] == "cajero":
             self.btn_edit.config(state="disabled")
             self.btn_delete.config(state="disabled")
+            #self.btn_cancel.config(state="disabled")
 
         self.btn_new.config(state="normal")
         self.btn_search.config(state="normal")
@@ -1207,7 +1216,19 @@ class CustomerApp:
         messagebox.showinfo("Éxito", "Cliente insertado con éxito.")
         self.clear_entries()
         self.disable_entries()
-        self.disable_buttons([self.btn_insert, self.btn_cancel])
+        user = self.db.search_user_by_username(self.username)
+        print("user", user[3])
+        if user[3] == "cajero":
+            print("cajero")
+            self.btn_edit.config(state="disabled")
+            self.btn_delete.config(state="disabled")
+            self.disable_buttons([self.btn_insert, self.btn_cancel])            
+                #self.btn_cancel.config(state="disabled")
+        else:
+            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
+            self.enable_entries()
+            
+        #self.disable_buttons([self.btn_insert, self.btn_cancel])
         self.enable_buttons([self.btn_new])
 
     def cancel(self):
@@ -1238,11 +1259,20 @@ class CustomerApp:
             self.ent_rfc.insert(0, customer[4])
 
             self.disable_buttons([self.btn_new, self.btn_insert])
-            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
+            
+            user = self.db.search_user_by_username(self.username)
+            print("user", user[3])
+            if user[3] == "cajero":
+                print("cajero")
+                self.btn_edit.config(state="disabled")
+                self.btn_delete.config(state="disabled")
+                #self.btn_cancel.config(state="disabled")
+            else:
+                self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
             self.enable_entries()
             self.ent_search_id["state"] = "normal"
             
-            self.btn_edit["state"] = "normal"
+            #self.btn_edit["state"] = "normal"
         else:
             messagebox.showinfo("Error", "Cliente no encontrado.")
 
@@ -2178,7 +2208,10 @@ class VentaApp:
         return name.replace(" ", "").isalpha()  
     
     def setup_buttons(self):
-        if self.username in ["gerente", "cajero"]:
+        print("user perfil", self.username)
+        user = self.db.search_user_by_username(self.username)
+        print("user", user[3])
+        if user[3] == "cajero":
             self.btn_edit.config(state="disabled")
             self.btn_delete.config(state="disabled")
 
@@ -2305,13 +2338,25 @@ class VentaApp:
         if not re.match(r'^\d+$', self.ent_cantidad.get()):
             messagebox.showerror("Error", "La cantidad debe ser un número positivo.")
             return
+        
+        
 
         articulo_nombre = self.combo_articulo.get()
         articulo = self.db.search_articulo_by_name(articulo_nombre)
         precio_venta = int(articulo[3])
         cliente_name = self.combo_cliente.get()
         cantidad = int(self.ent_cantidad.get())
-        cliente_existente = self.db.search_cliente_by_venta(cliente_name)       
+        cliente_existente = self.db.search_cliente_by_venta(cliente_name)      
+         
+        articulo_id = articulo[0]
+        stock_actual = self.db.search_articulo_venta_stock_by_id(articulo_id)
+        stock_disponible = stock_actual[0]
+
+        #cantidad = int(self.ent_cantidad.get())
+
+        if stock_disponible < cantidad:
+            messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
+            return
         
         total_existente = self.db.search_venta_detalle_by_id(self.ent_venta_id.get(), articulo[0])
                            
@@ -2387,6 +2432,8 @@ class VentaApp:
         if not articulo:
             messagebox.showerror("Error", "Articulo no encontrado.")
             return
+
+        
         
         articulo_id = self.db.search_articulo_by_name(articulo_nombre)
         puntos_articulo = self.db.search_articulo_by_id(articulo_id[0])
@@ -2512,8 +2559,17 @@ class VentaApp:
             print("Detalles seleccionados:", self.lbl_carrito_articulos.get(0, tk.END))
             self.lbl_carrito_articulos.bind('<<ListboxSelect>>', self.on_listbox_select)
             
-            self.disable_buttons([self.btn_new, self.btn_insert])
-            self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
+            print("user perfil", self.username)
+            user = self.db.search_user_by_username(self.username)
+            print("user", user[3])
+            if user[3] == "cajero":
+                self.btn_edit.config(state="disabled")
+                self.btn_delete.config(state="disabled")
+                self.btn_cancel.config(state="disabled")
+            else:
+                self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
+
+            self.disable_buttons([ self.btn_insert])
             self.ent_venta_id.config(state="normal")
             
             self.enable_entries()
@@ -2568,7 +2624,16 @@ class VentaApp:
         venta_id = self.ent_venta_id.get()
         precio_venta = int(articulo[3])
         
+        articulo_id = articulo[0]
+        stock_actual = self.db.search_articulo_venta_stock_by_id(articulo_id)
+        stock_disponible = stock_actual[0]
+       
         cantidad_actual = int(self.ent_cantidad.get())
+        
+        if stock_disponible < cantidad_actual:
+            messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
+            return
+        
         print("Cantidad actual:", cantidad_actual)
         detalle_encontrado = self.db.get_venta_detalle_by_articulo(articulo[0])
         print("Detalle encontrado:", detalle_encontrado)
@@ -2582,8 +2647,7 @@ class VentaApp:
             print("Diferencia de cantidades si cantidad actual es mayor:", diferencia_cantidades)
             #self.db.update_articulo_stock(articulo[0], diferencia_cantidades)
         #diferencia_cantidades = cantidad_actual - cantidad_en_bd
-        
-        
+               
         total_existente = self.db.search_venta_by_id(self.ent_venta_id.get())
         print("Total devuelto de compras:", total_existente)
         if total_existente:
@@ -3053,7 +3117,18 @@ class CompraApp:
                 
         articulo_nombre = self.combo_articulo.get()
         articulo = self.db.search_articulo_by_name(articulo_nombre)
-        precio_unitario = int(articulo[2])       
+        precio_unitario = int(articulo[2])
+        
+        articulo_id = articulo[0]
+        stock_actual = self.db.get_articulo_stock_by_id(articulo_id)
+        stock_disponible = stock_actual[0] 
+
+        cantidad = int(self.ent_cantidad.get())
+
+        # Verificar stock
+        if stock_disponible < cantidad:
+            messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
+            return       
         
         total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), articulo[0])
         if total_existente:
@@ -3259,7 +3334,18 @@ class CompraApp:
         compra_id = self.ent_compra_id.get()
         precio_unitario = int(articulo[2])
         
+        
+        articulo_id = articulo[0]
+        stock_actual = self.db.get_articulo_stock_by_id(articulo_id)
+        stock_disponible = stock_actual[0] if stock_actual else 0
+        
         cantidad_actual = int(self.ent_cantidad.get())
+
+        # Verificar stock
+        if stock_disponible < cantidad_actual:
+            messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
+            return
+        
         print("Cantidad actual:", cantidad_actual)
         detalle_encontrado = self.db.search_compra_detalle_by_id(compra_id, articulo[0])
         cantidad_en_bd = detalle_encontrado[3]
@@ -3495,11 +3581,11 @@ class LoginWindow:
                 self.root.destroy()
                 self.open_menu_user(user)
             elif user[3] == "cajero":
-                messagebox.showinfo("Login Exitoso", "Bienvenido, {}!".format(username))
+                messagebox.showinfo("Login Exitoso", "Bienvenido cajero, {}!".format(username))
                 self.root.destroy()
                 self.open_cajero_menu()
             elif user[3] == "gerente":
-                messagebox.showinfo("Login Exitoso", "Bienvenido, {}!".format(username))
+                messagebox.showinfo("Login Exitoso", "Bienvenido gerente, {}!".format(username))
                 self.root.destroy()
                 self.open_gerente_menu()
                     
@@ -3699,29 +3785,73 @@ class LoginWindow:
         menu_window.mainloop()
 
     def open_cajero_menu(self):
+        
         menu_window = tk.Tk()
-        menu_window.title("Farmacia cajero")
-        menu_window.geometry("300x200")
-        menu_window.configure(bg="#f0f0f0")
+        menu_window.title("Farmacia Cajero")
+        menu_window.geometry("800x550")
+        menu_window.configure(bg="#ffffff")
+        username = self.username
+        print("Username:", username)
 
         button_font = tkfont.Font(family="Helvetica", size=12)
 
         menu_bar = tk.Menu(menu_window)
         menu_window.config(menu=menu_bar)
+        
+        button_frame = tk.Frame(menu_window, bg="#ffffff")
+        button_frame.pack(pady=20)    
+            
+        cliente_button = tk.Button(
+                button_frame, 
+                text="Clientes", 
+                command=self.open_customer_menu, 
+                font=button_font, 
+                bg="#86BBD8", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        cliente_button.pack(side="left", pady=2)
+            
+        venta_button = tk.Button(
+                button_frame, 
+                text="Ventas", 
+                command=self.open_venta_menu, 
+                font=button_font, 
+                bg="#86BBD8", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        venta_button.pack(side="left", pady=2)
+            
+        salir_button = tk.Button(
+                button_frame, 
+                text="Salir", 
+                command=menu_window.destroy, 
+                font=button_font, 
+                bg="#33658A", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        salir_button.pack(side="left", pady=2)
 
-        file_menu = tk.Menu(menu_bar, tearoff=0, font=button_font, bg="#f0f0f0", fg="#333333")
-        file_menu.add_command(label="Customers", command=self.open_customer_menu)
-        file_menu.add_command(label="Cars", command=self.open_cars_menu)
-        file_menu.add_separator()
-        file_menu.add_command(label="Salir", command=menu_window.destroy)
-        menu_bar.add_cascade(label="Menú", menu=file_menu)
-
+        big_title = tk.Label(menu_window, text="SELECCIONA UNA OPCION DEL MENU", font=("Helvetica", 16, "bold"), bg="#ffffff", fg="#03012C", anchor="center", justify="center")
+        big_title.pack(pady=20)
+        
         login_button = tk.Button(
             menu_window, 
             text="Regresar a Login", 
             command=self.show_login_window, 
             font=button_font, 
-            bg="#007BFF", 
+            bg="#33658A", 
             fg="white", 
             padx=20, 
             pady=10, 
@@ -3733,29 +3863,87 @@ class LoginWindow:
         menu_window.mainloop()
 
     def open_gerente_menu(self):
+        
         menu_window = tk.Tk()
         menu_window.title("Farmacia Gerente")
-        menu_window.geometry("300x200")
-        menu_window.configure(bg="#f0f0f0")
+        menu_window.geometry("800x550")
+        menu_window.configure(bg="#ffffff")
+        username = self.username
+        print("Username:", username)
 
         button_font = tkfont.Font(family="Helvetica", size=12)
 
         menu_bar = tk.Menu(menu_window)
         menu_window.config(menu=menu_bar)
-
-        file_menu = tk.Menu(menu_bar, tearoff=0, font=button_font, bg="#f0f0f0", fg="#333333")
         
-        file_menu.add_command(label="Repair", command=self.open_repair_menu)
-        file_menu.add_separator()
-        file_menu.add_command(label="Salir", command=menu_window.destroy)
-        menu_bar.add_cascade(label="Menú", menu=file_menu)
+        button_frame = tk.Frame(menu_window, bg="#ffffff")
+        button_frame.pack(pady=20)    
+            
+        cliente_button = tk.Button(
+                button_frame, 
+                text="Clientes", 
+                command=self.open_customer_menu, 
+                font=button_font, 
+                bg="#86BBD8", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        cliente_button.pack(side="left", pady=2)
+            
+        venta_button = tk.Button(
+                button_frame, 
+                text="Ventas", 
+                command=self.open_venta_menu, 
+                font=button_font, 
+                bg="#86BBD8", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        venta_button.pack(side="left", pady=2)
+        
+        compra_button = tk.Button(
+                button_frame, 
+                text="Compras", 
+                command=self.open_compra_menu, 
+                font=button_font, 
+                bg="#86BBD8", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        compra_button.pack(side="left", pady=2)
+            
+        salir_button = tk.Button(
+                button_frame, 
+                text="Salir", 
+                command=menu_window.destroy, 
+                font=button_font, 
+                bg="#33658A", 
+                fg="white", 
+                padx=20, 
+                pady=3, 
+                bd=3, 
+                relief="flat"
+            )
+        salir_button.pack(side="left", pady=2)
 
+        big_title = tk.Label(menu_window, text="SELECCIONA UNA OPCION DEL MENU", font=("Helvetica", 16, "bold"), bg="#ffffff", fg="#03012C", anchor="center", justify="center")
+        big_title.pack(pady=20)
+        
         login_button = tk.Button(
             menu_window, 
             text="Regresar a Login", 
             command=self.show_login_window, 
             font=button_font, 
-            bg="#007BFF", 
+            bg="#33658A", 
             fg="white", 
             padx=20, 
             pady=10, 
