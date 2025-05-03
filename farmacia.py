@@ -951,9 +951,15 @@ class App:
             self.ent_password.delete(0, END)
             self.ent_profile.set("")
 
+            #asi es para no se pongan doble los datos en el entry    
+            self.ent_user_id["state"] = "normal"
+            self.ent_name["state"] = "normal"
+            self.ent_password["state"] = "normal"
+            self.ent_profile["state"] = "normal"
+
             self.ent_user_id.insert(0, user[0])
-            self.ent_user_id["state"] = "readonly"
-            self.ent_user_id["state"] = "disabled" 
+            
+            #self.ent_user_id["state"] = "disabled" 
             
             self.ent_name.insert(0, user[1])
             self.ent_password.insert(0, user[2])
@@ -963,6 +969,7 @@ class App:
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])
             self.enable_entries()
             self.ent_search_id["state"] = "normal"
+            self.ent_user_id["state"] = "readonly"
             
             self.btn_edit["state"] = "normal"
         else:
@@ -1189,6 +1196,8 @@ class CustomerApp:
 
         self.current_customer_id = self.db.get_next_customer_id()
         self.ent_customer_id.insert(0, self.current_customer_id)
+        self.ent_customer_id["state"] = "readonly"
+        self.ent_customer_id["state"] = "disabled"  
 
     def insert(self):
         if not self.validate_fields():
@@ -1251,6 +1260,12 @@ class CustomerApp:
             self.ent_phone.delete(0, END)
             self.ent_user_id.delete(0, END)
             self.ent_rfc.delete(0, END)
+            
+            self.ent_customer_id["state"] = "normal"
+            self.ent_name["state"] = "normal"
+            self.ent_phone["state"] = "normal"
+            self.ent_user_id["state"] = "normal"
+            self.ent_rfc["state"] = "normal"
 
             self.ent_customer_id.insert(0, customer[0])
             self.ent_name.insert(0, customer[2])
@@ -1271,6 +1286,7 @@ class CustomerApp:
                 self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
             self.enable_entries()
             self.ent_search_id["state"] = "normal"
+            self.ent_customer_id["state"] = "readonly"
             
             #self.btn_edit["state"] = "normal"
         else:
@@ -1498,6 +1514,8 @@ class ProveedorApp:
 
         self.current_proveedor_id = self.db.get_next_proveedor_id()
         self.ent_proveedor_id.insert(0, self.current_proveedor_id)
+        self.ent_proveedor_id["state"] = "readonly"
+        self.ent_proveedor_id["state"] = "disabled"
 
     def insert(self):
         if not self.validate_fields():
@@ -1537,6 +1555,12 @@ class ProveedorApp:
             self.ent_empresa.delete(0, END)
             self.ent_direccion.delete(0, END)
             self.ent_phone.delete(0, END)
+            
+            self.ent_proveedor_id["state"] = "normal"
+            self.ent_name["state"] = "normal"
+            self.ent_empresa["state"] = "normal"
+            self.ent_direccion["state"] = "normal"
+            self.ent_phone["state"] = "normal"
 
             self.ent_proveedor_id.insert(0, proveedor[0])
             self.ent_name.insert(0, proveedor[1])
@@ -1548,6 +1572,7 @@ class ProveedorApp:
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
             self.enable_entries()
             self.ent_search_id["state"] = "normal"
+            self.ent_proveedor_id["state"] = "readonly"
             
             self.btn_edit["state"] = "normal"
         else:
@@ -1808,6 +1833,8 @@ class ArticuloApp:
 
         self.current_articulo_id = self.db.get_next_articulo_id()
         self.ent_articulo_id.insert(0, self.current_articulo_id)
+        self.ent_articulo_id["state"] = "readonly"
+        self.ent_articulo_id["state"] = "disabled"
 
     def insert(self):
         if not self.validate_fields():
@@ -1876,6 +1903,13 @@ class ArticuloApp:
             self.ent_precioven.delete(0, END)
             self.ent_descuento.delete(0, END)
             self.ent_puntos.delete(0, END)
+            
+            self.ent_articulo_id["state"] = "normal"
+            self.ent_descripcion["state"] = "normal"    
+            self.ent_preciouni["state"] = "normal"
+            self.ent_precioven["state"] = "normal"
+            self.ent_descuento["state"] = "normal"
+            self.ent_puntos["state"] = "normal"
 
             self.ent_articulo_id.insert(0, articulo[0])
             self.ent_descripcion.insert(0, articulo[1])
@@ -1894,6 +1928,7 @@ class ArticuloApp:
             self.enable_buttons([self.btn_edit, self.btn_delete, self.btn_cancel])  
             self.enable_entries()
             self.ent_search_id["state"] = "normal"
+            self.ent_articulo_id["state"] = "readonly"
             
             self.btn_edit["state"] = "normal"
         else:
