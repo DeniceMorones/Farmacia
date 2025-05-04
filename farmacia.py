@@ -724,10 +724,11 @@ class DBManager:
             'cantidad': cantidad, 
         }
       
-    def delete_compra_detalle(self, folio_compra, articulo_id, cantidad):
-        query = "DELETE FROM det_compra WHERE folio_compra = %s AND articulo_id = %s AND cantidad = %s RETURNING *;"
-        self.cursor.execute(query, (folio_compra, articulo_id, cantidad))
+    def delete_compra_detalle(self, det_id_compra, articulo_id, cantidad):
+        query = "DELETE FROM det_compra WHERE det_id_compra = %s AND articulo_id = %s AND cantidad = %s RETURNING *;"
+        self.cursor.execute(query, (det_id_compra, articulo_id, cantidad))
         deleted_details = self.cursor.fetchall()
+        print("Detalles eliminados:", deleted_details)
         self.conn.commit()
         return deleted_details
     
@@ -1805,7 +1806,15 @@ class ArticuloApp:
         )
         self.btn_delete.place(x=460, y=360)  
 
-        
+        self.btn_limpiar = tk.Button(
+                    root, 
+                    text="Limpiar", 
+                    command=self.clear_all_entries, 
+                    font=self.button_font, 
+                    bg="#86BBD8", 
+                    fg="white"
+                )
+        self.btn_limpiar.place(x=450, y=300)
 
         self.setup_buttons()  
     
@@ -2015,6 +2024,19 @@ class ArticuloApp:
         self.ent_puntos.delete(0, END)
         self.ent_stock.delete(0, END)
         #self.ent_user_id.delete(0, END)
+
+    def clear_all_entries(self):
+        self.ent_articulo_id["state"] = "normal"    
+        self.ent_articulo_id.delete(0, END)
+        self.ent_articulo_id["state"] = "disabled"
+        self.ent_descripcion.delete(0, END)
+        self.ent_preciouni.delete(0, END)
+        self.ent_precioven.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+        self.combo_username.delete(0, END)
+        self.ent_descuento.delete(0, END)
+        self.ent_puntos.delete(0, END)
+        self.ent_stock.delete(0, END)
 
     def enable_entries(self):
         self.ent_articulo_id["state"] = "normal"
@@ -2341,24 +2363,41 @@ class VentaApp:
         
         try:
             last_detail = self.selected_articulos[-1]
+            print("Ultimo detalle:", last_detail)
+            #articulo_id = self.db.search_articulo_by_name(last_detail[2])
+            #print("Articulo ID:", articulo_id[0])
             
-            articulo_id = self.db.search_articulo_by_name(last_detail[1])
-            cliente_id = self.db.search_customer_by_name(last_detail[3])
+            total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), last_detail[2])
+            print("Total existente:", total_existente[3])
             
-            success = self.db.delete_venta_detalle(
-                last_detail[0],  # folio_venta
-                articulo_id[0],  # articulo_id
-                last_detail[2],  # cantidad
-                cliente_id[0],   # cliente_id
-                last_detail[4]   # puntos
+            success = self.db.delete_compra_detalle(
+                last_detail[0],  # folio_compra
+                last_detail[2],  # articulo_id
+                last_detail[3],  # cantidad
             )
+            
+            precio_unitario = self.db.search_articulo_by_id(last_detail[2])
+            subtotal_total = precio_unitario[3] * last_detail[3]
+            iva = subtotal_total * 0.16
+            total = subtotal_total + iva
+            
+            total_actualizado = total_existente[3] - total
+            print("Total actualizado:", total_actualizado)
+            
+            self.db.update_total_in_compra(self.ent_compra_id.get(), total_actualizado)
+            
+            self.ent_total.config(state="normal")
+            self.ent_total.delete(0, tk.END)
+            self.ent_total.insert(0, f"{total_actualizado:.2f}")
+            self.ent_total.config(state="disabled")             
             
             if success:
                 self.selected_articulos.pop()
                 self.lbl_carrito_articulos.delete(tk.END)
                 
-                self.db.update_articulo_venta_stock_delete(articulo_id[0], -last_detail[2])
-                
+                self.db.update_articulo_stock(last_detail[2], -last_detail[3])
+                self.db.update_articulo_venta_stock_delete(last_detail[2], last_detail[3])
+                              
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
             else:
                 messagebox.showerror("Error", "No se pudo eliminar el detalle de la BD")
@@ -3052,6 +3091,16 @@ class CompraApp:
         )
         self.btn_quitar_articulo.place(x=120, y=800)
 
+        self.btn_limpiar = tk.Button(
+                    root, 
+                    text="Limpiar", 
+                    command=self.clear_all_entries, 
+                    font=self.button_font, 
+                    bg="#86BBD8", 
+                    fg="white"
+                )
+        self.btn_limpiar.place(x=450, y=350) 
+
         self.setup_buttons()  
     
     def validate_name(self, name):
@@ -3109,9 +3158,7 @@ class CompraApp:
         self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", compraResponse['folio_venta']} {"Articulo:", compraResponse['articulo_name']} {"Cantidad:", compraResponse['cantidad']}")
         
         self.calculate_total()
-    
-    
-        
+         
     def quitar_detalle(self):
         if not self.selected_articulos:
             messagebox.showwarning("No hay articulos para quitar.")
@@ -3119,22 +3166,41 @@ class CompraApp:
         
         try:
             last_detail = self.selected_articulos[-1]
+            print("Ultimo detalle:", last_detail)
+            #articulo_id = self.db.search_articulo_by_name(last_detail[2])
+            #print("Articulo ID:", articulo_id[0])
             
-            articulo_id = self.db.search_articulo_by_name(last_detail[1])
+            total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), last_detail[2])
+            print("Total existente:", total_existente[3])
             
             success = self.db.delete_compra_detalle(
                 last_detail[0],  # folio_compra
-                articulo_id[0],  # articulo_id
-                last_detail[2],  # cantidad
+                last_detail[2],  # articulo_id
+                last_detail[3],  # cantidad
             )
+            
+            precio_unitario = self.db.search_articulo_by_id(last_detail[2])
+            subtotal_total = precio_unitario[2] * last_detail[3]
+            iva = subtotal_total * 0.16
+            total = subtotal_total + iva
+            
+            total_actualizado = total_existente[3] - total
+            print("Total actualizado:", total_actualizado)
+            
+            self.db.update_total_in_compra(self.ent_compra_id.get(), total_actualizado)
+            
+            self.ent_total.config(state="normal")
+            self.ent_total.delete(0, tk.END)
+            self.ent_total.insert(0, f"{total_actualizado:.2f}")
+            self.ent_total.config(state="disabled")             
             
             if success:
                 self.selected_articulos.pop()
                 self.lbl_carrito_articulos.delete(tk.END)
                 
-                self.db.update_articulo_stock(articulo_id[0], -last_detail[2])
-                self.db.update_articulo_venta_stock_delete(articulo_id[0], -last_detail[2])
-                
+                self.db.update_articulo_stock(last_detail[2], -last_detail[3])
+                self.db.update_articulo_venta_stock_delete(last_detail[2], -last_detail[3])
+                              
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
             else:
                 messagebox.showerror("Error", "No se pudo eliminar el detalle de la BD")
@@ -3171,15 +3237,27 @@ class CompraApp:
             cantidad = int(self.ent_cantidad.get())
             diferencia = cantidad - cantidad_existente
             subtotal_articulo = precio_unitario * diferencia
+            print("Subtotal articulo:", subtotal_articulo)
             self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
         
             self.calculate_total()
+        #ME QUEDE AQUI PARA ARREGLAR CUANDO SE BUSCA Y SE AÑADE UN ARTICULO NUEVO EL PRECIO SEA LA SUMA DEL TOTAL QUE YA HABIA
+        #INTENTAR HACERLO BUSCANDO SI YA HAY UNA COMPRA GUARDADA CON ESE ID Y EXTRAER EL TOTAL
         else: 
-            cantidad = int(self.ent_cantidad.get())
-            subtotal_articulo = precio_unitario * cantidad
-            self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
-        
-            self.calculate_total()
+            compra_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
+            if compra_existente:
+                total_existente = compra_existente[3]
+                subtotal_articulo = total_existente + (precio_unitario * cantidad)
+                print("Subtotal articulo:", subtotal_articulo)
+                self.precios.append({'subtotal': subtotal_articulo})
+                
+                self.calculate_total()
+            else:
+                cantidad = int(self.ent_cantidad.get())
+                subtotal_articulo = precio_unitario * cantidad
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+            
+                self.calculate_total()
         
         compra = {
             'compra_id': self.ent_compra_id.get(),
@@ -3212,7 +3290,7 @@ class CompraApp:
         else:
             compraResponse = self.db.add_compra_detalle(compraDetail)
             self.selected_articulos.append((compraResponse['folio_compra'], compraResponse['articulo_name'], compraResponse['cantidad']))
-            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", compraResponse['folio_compra']} {"Articulo:", compraResponse['articulo_name']} {"Cantidad:", compraResponse['cantidad']}")
+            self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", compraResponse['folio_compra']} {"Compra ID:", compra['compra_id']} {"Articulo ID:", compraDetail['articulo_id']} {"Cantidad:", compraResponse['cantidad']}")
         
         #self.clear_entries()
         #self.disable_entries()
@@ -3258,12 +3336,10 @@ class CompraApp:
                 if cantidad_articulo_venta:
                     self.db.update_articulo_venta_stock_delete(articulo_id, -cantidad_vendida)
             
-                
             self.db.delete_compra(saved_compra[0])
             self.db.delete_all_detalles(compra_id)
             messagebox.showinfo("Éxito", "Compra cancelada con éxito.")
-        
-            
+                   
         self.clear_entries()
         self.disable_entries()
         self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
@@ -3530,7 +3606,31 @@ class CompraApp:
         self.ent_subtotal["state"] = "disabled"
         self.ent_total["state"] = "disabled"
         self.ent_iva['state'] = "disabled"
-        
+    
+    def clear_all_entries(self):
+        self.ent_compra_id["state"] = "normal"
+        self.ent_compra_id.delete(0, END)
+        self.ent_compra_id["state"] = "readonly"
+        self.ent_usuario.delete(0, END)
+        self.combo_proveedor.delete(0, END)
+        self.combo_articulo.delete(0, END)
+        #self.ent_user_id.delete(0, END)
+        #self.combo_proveedor.delete(0, END)
+        self.ent_fecha.delete(0, END)
+        self.ent_cantidad.delete(0, END)
+        self.ent_subtotal["state"] = "normal"
+        self.ent_subtotal.delete(0, END)
+        self.ent_subtotal["state"] = "disabled"
+        self.ent_total["state"] = "normal"        
+        self.ent_total.delete(0, END)
+        self.ent_total["state"] = "disabled"
+        self.ent_iva["state"] = "normal"
+        self.ent_iva.delete(0, END)
+        self.ent_iva["state"] = "disabled"      
+        #self.ent_user_id.delete(0, END)
+        self.lbl_carrito_articulos.delete(0, END)
+        self.selected_articulos.clear()
+    
     def clear_folio_entry(self):
         #self.clear_folio_entry()
         self.ent_compra_id.config(state="normal")
