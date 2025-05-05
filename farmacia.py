@@ -314,22 +314,30 @@ class DBManager:
         
     
     def update_articulo_stock(self, articulo_id, difference):
-        print(f"Cantidad aqui en update stock: {difference}")
-        current_stock = self.get_articulo_stock_by_id(articulo_id)
-        print("STOCK ACTUAL DEL ARTICULO", current_stock)
-
-        #current_stock = int(current_stock) if current_stock is not None else 0
-
-        new_stock = current_stock[0] - difference
-
-        if new_stock < 1:
-            messagebox.showerror("Error", "No hay suficientes piezas en stock.")
-            return
-
-        query = "UPDATE det_articulo SET existencia=%s WHERE articulo_id=%s"
-        values = (new_stock, articulo_id)
-        self.cursor.execute(query, values)
-        self.conn.commit()
+        """Actualiza el stock de compra (det_articulo) sumando la diferencia."""
+        # Esta función ahora debe sumar la diferencia, no restar.
+        query = "UPDATE det_articulo SET existencia = existencia - %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            self.conn.commit()
+            print(f"Stock de compra (det_articulo) para articulo {articulo_id} ajustado por {difference}.")
+        except Exception as e:
+            print(f"Error al actualizar stock de compra (det_articulo): {e}")
+            self.conn.rollback()
+            
+    def update_articulo_stock_dos(self, articulo_id, difference):
+        """Actualiza el stock de compra (det_articulo) sumando la diferencia."""
+        # Esta función ahora debe sumar la diferencia, no restar.
+        query = "UPDATE det_articulo SET existencia = existencia - %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            self.conn.commit()
+            print(f"Stock de compra (det_articulo) para articulo {articulo_id} ajustado por {difference}.")
+        except Exception as e:
+            print(f"Error al actualizar stock de compra (det_articulo): {e}")
+            self.conn.rollback()
     
     def search_articulo_venta_stock_by_id(self, articulo_id):
         query = "SELECT cantidad FROM articulo_stock WHERE articulo_id = %s"
@@ -360,10 +368,31 @@ class DBManager:
         self.cursor.execute(query, values)
         self.conn.commit()
         messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
+        
+    def update_articulo_venta_stock_dos(self, articulo_id, difference):
+        """Actualiza el stock de venta (articulo_stock) sumando la diferencia."""
+        # Esta función debe sumar la diferencia para la compra.
+        query = "UPDATE articulo_stock SET cantidad = cantidad + %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            self.conn.commit()
+            print(f"Stock de venta (articulo_stock) para articulo {articulo_id} ajustado por {difference}.")
+        except Exception as e:
+            print(f"Error al actualizar stock de venta (articulo_stock): {e}")
+            self.conn.rollback()
     
     def update_articulo_venta_stock_delete(self, articulo_id, difference):
         
         query = "UPDATE articulo_stock SET cantidad = cantidad + %s WHERE articulo_id = %s"
+        values = (difference, articulo_id)
+        self.cursor.execute(query, values)
+        self.conn.commit()
+        messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
+    
+    def update_articulo_venta_stock_delete_dos(self, articulo_id, difference):
+        
+        query = "UPDATE articulo_stock SET cantidad = cantidad - %s WHERE articulo_id = %s"
         values = (difference, articulo_id)
         self.cursor.execute(query, values)
         self.conn.commit()
@@ -666,16 +695,39 @@ class DBManager:
             
             #self.update_articulo_stock(articulo_id[0], cantidad)  
 
-    def update_total_in_compra(self, compra_id, total):
+    def update_total_in_compra(self, compra_id, new_total):
         query = "UPDATE compras SET total = %s WHERE folio_compra = %s"
-        values = (total, compra_id)
-        self.cursor.execute(query, values)
-        self.conn.commit()       
+        values = (new_total, compra_id)
+        try:
+            self.cursor.execute(query, values)
+            self.conn.commit()
+            print(f"Total de compra {compra_id} actualizado a {new_total} en BD.")
+            return True
+        except Exception as e:
+             print(f"Error al actualizar total de compra en BD: {e}")
+             self.conn.rollback()
+             return False      
     
     def delete_compra(self, folio_compra):
         query = "DELETE FROM compras WHERE folio_compra = %s"
         self.cursor.execute(query, (folio_compra,))
         self.conn.commit()
+    
+    def get_detalle_compra_by_compra_articulo(self, compra_id, articulo_id):
+        """Obtiene un detalle de compra específico por folio_compra y articulo_id."""
+        query = """
+        SELECT det_id_compra, folio_compra, articulo_id, cantidad
+        FROM det_compra
+        WHERE folio_compra = %s AND articulo_id = %s
+        """
+        values = (compra_id, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            result = self.cursor.fetchone()
+            return result
+        except Exception as e:
+            print(f"Error al obtener detalle de compra por compra_id y articulo_id: {e}")
+            return None
     
     def save_compra(self, compra):
         #valor = articulo['descuento'].strip()
@@ -823,6 +875,19 @@ class DBManager:
 
         else:
             messagebox.showerror("Error", "No se encontró el detalle de compra para actualizar.")
+    
+    def update_compra_detalle_dos(self, compra_id, articulo_id, new_cantidad):
+        query = "UPDATE det_compra SET cantidad = %s WHERE folio_compra = %s AND articulo_id = %s"
+        values = (new_cantidad, compra_id, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            self.conn.commit()
+            print(f"Detalle de compra (compra_id: {compra_id}, articulo_id: {articulo_id}) actualizado con cantidad: {new_cantidad}.")
+            return True
+        except Exception as e:
+            print(f"Error al actualizar detalle de compra en BD: {e}")
+            self.conn.rollback()
+            return False
         
     def search_compra_detalle_by_folio(self, folio_compra):
         query = "SELECT * FROM det_compra WHERE folio_compra = %s"
@@ -2660,7 +2725,9 @@ class VentaApp:
         if not articulo:
             messagebox.showerror("Error", "Articulo no encontrado.")
             return
-     
+
+        
+        
         articulo_id = self.db.search_articulo_by_name(articulo_nombre)
         puntos_articulo = self.db.search_articulo_by_id(articulo_id[0])
         cliente_id = self.db.search_customer_by_name(cliente_name)
@@ -2907,7 +2974,10 @@ class VentaApp:
                      print(f"Advertencia: No se encontró información del cliente con ID {cliente_id[0]} para ajustar puntos.")
             else:
                  print(f"Advertencia: No se encontraron puntos para el cliente con ID {cliente_id[0]} para ajustar puntos.")
-             
+        
+        
+        
+        
         print("Cantidad actual:", cantidad_actual)
         detalle_encontrado = self.db.get_venta_detalle_by_articulo(articulo[0])
         print("Detalle encontrado:", detalle_encontrado)
@@ -3443,7 +3513,7 @@ class CompraApp:
                 self.lbl_carrito_articulos.delete(tk.END)
                 
                 self.db.update_articulo_stock(last_detail[2], -last_detail[3])
-                self.db.update_articulo_venta_stock_delete(last_detail[2], -last_detail[3])
+                self.db.update_articulo_venta_stock_delete_dos(last_detail[2], last_detail[3])
                               
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
             else:
@@ -3741,103 +3811,123 @@ class CompraApp:
             self.actual_stock = stock[3] 
 
     def edit(self):
-        
+        # Limpiar la lista de precios al inicio de la edición
+        self.precios = []
+
         if not self.validate_fields():
             return
-               
+
+        compra_id = self.ent_compra_id.get()
+        if not compra_id:
+            messagebox.showerror("Error", "No se ha seleccionado una compra para editar.")
+            return
+
         articulo_nombre = self.combo_articulo.get()
         articulo = self.db.search_articulo_by_name(articulo_nombre)
-        compra_id = self.ent_compra_id.get()
-        precio_unitario = int(articulo[2])
-        
-        
-        articulo_id = articulo[0]
-        stock_actual = self.db.get_articulo_stock_by_id(articulo_id)
-        stock_disponible = stock_actual[0] if stock_actual else 0
-        
-        cantidad_actual = int(self.ent_cantidad.get())
-
-        # Verificar stock
-        if stock_disponible < cantidad_actual:
-            messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
+        if not articulo:
+            messagebox.showerror("Error", f"Artículo '{articulo_nombre}' no encontrado.")
             return
-        
-        print("Cantidad actual:", cantidad_actual)
-        detalle_encontrado = self.db.search_compra_detalle_by_id(compra_id, articulo[0])
-        cantidad_en_bd = detalle_encontrado[3]
-        print("Cantidad en bd:", cantidad_en_bd)
-        diferencia_cantidades = 0
-        
-        if cantidad_actual > cantidad_en_bd:
-            diferencia_cantidades = cantidad_actual - cantidad_en_bd
-            #self.db.update_articulo_stock(articulo[0], -diferencia_cantidades)
-            print("Diferencia de cantidades si cantidad actual es mayor:", diferencia_cantidades)
-            #self.db.update_articulo_stock(articulo[0], diferencia_cantidades)
-        #diferencia_cantidades = cantidad_actual - cantidad_en_bd
-        
-        
-        total_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
-        print("Total devuelto de compras:", total_existente)
-        if total_existente:
-            print("EN TOTAL EXISTENTE DE EDITAR")
-            total = total_existente[3]
-            print("Total existente:", total)            
-            if cantidad_actual < cantidad_en_bd:
-                
-                print("SI QUIERO QUITAR") 
-                diferencia_cantidades = cantidad_en_bd - cantidad_actual
-                
-                subtotal_articulo = precio_unitario * (diferencia_cantidades)
-                print("Subtotal articulo:", subtotal_articulo)
-                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
-                print("arreglos de precios", self.precios)  
-                self.calculate_total_restar(diferencia_cantidades) 
-        #:(
-            else:
-                print("NO QUIERO QUITAR (ANADIR)")           
-                subtotal_articulo = (precio_unitario * diferencia_cantidades)
-                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
-                print("Subtotal articulo en else:", subtotal_articulo)  
-                self.calculate_total()
-        else:
-            subtotal_articulo = precio_unitario * cantidad_actual
-            self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO            
-            self.calculate_total()
-        
-        compra = {
-            'compra_id': self.ent_compra_id.get(),
-            'usuario': self.ent_usuario.get(),
-            'articulo': self.combo_articulo.get(),            
-            'cantidad': self.ent_cantidad.get(),
-            'fecha': self.ent_fecha.get(),
-            'total': self.ent_total.get()
-        }
-        
-        compraDetail = {
-            'det_id_compra': self.current_det_id,
-            'compra_id': self.ent_compra_id.get(),
-            'articulo': self.combo_articulo.get(),
-            'cantidad': self.ent_cantidad.get() 
-        }
-        
-        articulo_id = self.db.search_articulo_by_name(compraDetail["articulo"])
-        compraDetail_existente = self.db.search_compra_detalle_by_id(compraDetail["compra_id"], articulo_id[0])
-        if compraDetail_existente:
-            self.db.update_compra_detalle(compraDetail["compra_id"], articulo_id[0], compraDetail['cantidad'] )
-        
-        self.db.update_compra(compra, compraDetail, self.actual_stock)
-        
-        #CHECAR ESTOS EN UN FUTURO POR SI LLEGA A DAR ERROR
-        self.precios = []
+
+        articulo_id = articulo[0]
+        precio_unitario = articulo[2] # Precio unitario para la compra
+
+        try:
+            cantidad_actual_ui = int(self.ent_cantidad.get())
+        except ValueError:
+            messagebox.showerror("Error de entrada", "La cantidad debe ser un número entero.")
+            return
+
+        # --- 1. Obtener la cantidad original del detalle en la base de datos ---
+        detalle_existente_bd = self.db.get_detalle_compra_by_compra_articulo(compra_id, articulo_id)
+
+        if not detalle_existente_bd:
+            messagebox.showerror("Error", "No se encontró el detalle de compra para este artículo en esta compra.")
+            return
+
+        cantidad_en_bd = detalle_existente_bd[3]
+
+        print(f"Cantidad en BD: {cantidad_en_bd}, Cantidad en UI: {cantidad_actual_ui}")
+
+        # --- 2. Calcular la diferencia de cantidades ---
+        diferencia_cantidades = cantidad_actual_ui - cantidad_en_bd
+        print(f"Diferencia de cantidades: {diferencia_cantidades}")
+
+        # --- 3. Ajustar Stock (Compra y Venta) ---
+        if diferencia_cantidades != 0:
+            # Si la cantidad aumenta (diferencia_cantidades > 0), sumamos al stock.
+            # Si la cantidad disminuye (diferencia_cantidades < 0), restamos del stock (sumando un valor negativo).
+            self.db.update_articulo_stock(articulo_id, diferencia_cantidades) # Ajusta stock de compra (det_articulo)
+            self.db.update_articulo_venta_stock_dos(articulo_id, diferencia_cantidades) # Ajusta stock de venta (articulo_stock)
+
+        # --- 4. Actualizar el Detalle de Compra en BD ---
+        # Solo actualizamos la cantidad en det_compra
+        success_update_detalle = self.db.update_compra_detalle_dos(compra_id, articulo_id, cantidad_actual_ui)
+        if not success_update_detalle:
+             messagebox.showerror("Error", "No se pudo actualizar el detalle de la compra.")
+             # Considerar revertir los cambios de stock aquí si la actualización del detalle falla.
+             return
+
+        # --- 5. Re-calcular el Total de la Compra ---
+        # Obtener todos los detalles ACTUALIZADOS de la compra
+        detalles_actualizados_compra = self.db.get_compra_detalle(compra_id)
+        nuevo_subtotal_compra = 0
+        for det_actualizado in detalles_actualizados_compra:
+             det_articulo_id = det_actualizado[2]
+             det_cantidad = det_actualizado[3]
+             articulo_info_det = self.db.search_articulo_by_id(det_articulo_id)
+             if articulo_info_det:
+                 precio_unitario_det = articulo_info_det[2] # Usar precio unitario de compra
+                 subtotal_detalle = precio_unitario_det * det_cantidad
+                 nuevo_subtotal_compra += subtotal_detalle
+
+        nuevo_iva_compra = nuevo_subtotal_compra * 0.16
+        nuevo_total_compra = nuevo_subtotal_compra + nuevo_iva_compra
+
+        # --- 6. Actualizar el Total en la tabla compras y UI ---
+        self.db.update_total_in_compra(compra_id, nuevo_total_compra)
+        print(f"Total de la compra {compra_id} actualizado a {nuevo_total_compra:.2f}")
+
+        # Actualizar la UI con el nuevo total, subtotal e IVA
+        self.ent_subtotal.config(state="normal")
+        self.ent_iva.config(state="normal")
+        self.ent_total.config(state="normal")
+
+        self.ent_subtotal.delete(0, tk.END)
+        self.ent_subtotal.insert(0, f"{nuevo_subtotal_compra:.2f}")
+
+        self.ent_iva.delete(0, tk.END)
+        self.ent_iva.insert(0, f"{nuevo_iva_compra:.2f}")
+
+        self.ent_total.delete(0, tk.END)
+        self.ent_total.insert(0, f"{nuevo_total_compra:.2f}")
+
+        self.ent_subtotal.config(state="disabled")
+        self.ent_iva.config(state="disabled")
+        self.ent_total.config(state="disabled")
+
+        # --- Finalizar la edición ---
+        messagebox.showinfo("Éxito", "Compra actualizada con éxito. Stock y total ajustados.")
+
+        # Limpiar variables de estado
+        self.precios = [] # Limpiar self.precios después de re-calcular el total
         self.actual_stock = None
         self.cantidad_actual = None
-               
-        messagebox.showinfo("Éxito", "Compra actualizada con éxito.")
         self.current_det_id = None
+
+        # Actualizar la lista de detalles mostrados en la UI
+        self.lbl_carrito_articulos.delete(0, tk.END)
+        self.selected_articulos = [] # Limpiar la lista interna de detalles seleccionados
+        details = self.db.get_compra_detalle(compra_id)
+        for detail in details:
+             self.selected_articulos.append(detail)
+             self.lbl_carrito_articulos.insert(tk.END, f"{"Folio:", detail[0]} {"Compra ID:", detail[1]} {"Articulo ID:", detail[2]} {"Cantidad:", detail[3]}")
+
+
+        # Restablecer la UI a un estado inicial apropiado
         self.disable_entries()
-        self.disable_buttons([self.btn_insert, self.btn_cancel])
-        self.enable_buttons([self.btn_new])
-        self.clear_entries()
+        self.disable_buttons([self.btn_insert, self.btn_cancel, self.btn_edit, self.btn_delete])
+        self.enable_buttons([self.btn_new, self.btn_search])
+        self.clear_entries() # Limpiar las entradas individuales (no el carrito)
         
 
     def delete(self):
@@ -3849,7 +3939,7 @@ class CompraApp:
         for detalle in detalles_compra:
             articulo_id = detalle[2]  
             cantidad_vendida = detalle[3] 
-            self.db.update_articulo_stock(articulo_id, -cantidad_vendida)
+            self.db.update_articulo_stock(articulo_id, cantidad_vendida)
         
         self.db.delete_articulo_venta_stock(articulo_id)
         self.db.delete_compra(compra_id)
