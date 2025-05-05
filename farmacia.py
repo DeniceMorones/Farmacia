@@ -693,6 +693,7 @@ class DBManager:
         venta_stock = self.search_articulo_venta_stock_by_id(compraDetail['articulo_id'])
         print("ARTICULO EXISTENTE", venta_stock)
         if venta_stock:
+            print("ENTRA AL IF DE ACTUALIZAR STOCK")
             cantidad_existente = venta_stock[0]
             print("Cantidad existente", cantidad_existente)
             nuevo_stock = cantidad_existente + cantidad
@@ -701,18 +702,34 @@ class DBManager:
             self.cursor.execute(query, values)
             messagebox.showinfo("Éxito", "Stock actualizado con éxito.")
         else:
+            print("ENTRA AL ELSE DE ACTUALIZAR STOCK")
             stock = self.get_articulo_compra_stock_by_id(compraDetail['articulo_id'])
+            print("articulo id: ", compraDetail['articulo_id'])
+            print("STOCK DE LA COMPRA", stock)
             
-            current_stock = sum(int(row[0]) for row in stock) if stock else 0
-            print("STOCK ACTUAL DEL ARTICULO", current_stock)
+            if len(stock) == 1:
+                print("STOCK SOLO FUE 1")
+                stock = stock[0][0]
+                
+                new_stock = stock
             
-            new_stock = current_stock + cantidad
-            
-            self.save_articulo_stock_venta(compraDetail["articulo_id"], new_stock)
+                self.save_articulo_stock_venta(compraDetail["articulo_id"], new_stock)
 
-            if new_stock < 0:
-                messagebox.showerror("Error", "No hay suficientes piezas en stock.")
-                return
+                if new_stock < 0:
+                    messagebox.showerror("Error", "No hay suficientes piezas en stock.")
+                    return
+            else: 
+                
+                current_stock = sum(int(row[0]) for row in stock) 
+                print("STOCK ACTUAL DEL ARTICULO", current_stock)
+                
+                new_stock = current_stock + cantidad
+                
+                self.save_articulo_stock_venta(compraDetail["articulo_id"], new_stock)
+
+                if new_stock < 0:
+                    messagebox.showerror("Error", "No hay suficientes piezas en stock.")
+                    return
         
         
         print(f"cantidad a comprar: {cantidad}")
@@ -763,6 +780,7 @@ class DBManager:
         venta_stock = self.search_articulo_venta_stock_by_id(articulo_id)
         print("ARTICULO EXISTENTE EN UPDATE", venta_stock)
         if venta_stock:
+            print("UPDATE COMPRA DETALLE")
             cantidad_existente = venta_stock[0]
             print("Cantidad existente en update", cantidad_existente)
             diferencia = cantidad_nueva - cantidad_existente
@@ -2029,10 +2047,17 @@ class ArticuloApp:
         self.ent_articulo_id["state"] = "normal"    
         self.ent_articulo_id.delete(0, END)
         self.ent_articulo_id["state"] = "disabled"
+        self.ent_descripcion["state"] = "normal"
         self.ent_descripcion.delete(0, END)
+        self.ent_descripcion["state"] = "disabled"
+        self.ent_preciouni["state"] = "normal"
         self.ent_preciouni.delete(0, END)
+        self.ent_preciouni["state"] = "disabled"
+        self.ent_precioven["state"] = "normal"
         self.ent_precioven.delete(0, END)
+        self.ent_precioven["state"] = "disabled"
         #self.ent_user_id.delete(0, END)
+        
         self.combo_username.delete(0, END)
         self.ent_descuento.delete(0, END)
         self.ent_puntos.delete(0, END)
@@ -3170,7 +3195,7 @@ class CompraApp:
             #articulo_id = self.db.search_articulo_by_name(last_detail[2])
             #print("Articulo ID:", articulo_id[0])
             
-            total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), last_detail[2])
+            total_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
             print("Total existente:", total_existente[3])
             
             success = self.db.delete_compra_detalle(
@@ -3179,6 +3204,7 @@ class CompraApp:
                 last_detail[3],  # cantidad
             )
             
+            #AQUI ES ONDE HAGO LA RESTA PA CUANDO QUITO LO Q SE SUPONE Q ESTA BN Y NO ROBO
             precio_unitario = self.db.search_articulo_by_id(last_detail[2])
             subtotal_total = precio_unitario[2] * last_detail[3]
             iva = subtotal_total * 0.16
@@ -3230,12 +3256,14 @@ class CompraApp:
         if stock_disponible < cantidad:
             messagebox.showerror("Stock insuficiente", "No hay suficiente stock para esta venta.")
             return       
-        
+        #TIENE Q VR CON ESTE
         total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), articulo[0])
         if total_existente:
+            print("EN TOTAL EXISTENTE DE INSERT")
             cantidad_existente = total_existente[3]
+            print("Cantidad existente:", cantidad_existente)
             cantidad = int(self.ent_cantidad.get())
-            diferencia = cantidad - cantidad_existente
+            diferencia = cantidad + cantidad_existente
             subtotal_articulo = precio_unitario * diferencia
             print("Subtotal articulo:", subtotal_articulo)
             self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
@@ -3243,16 +3271,22 @@ class CompraApp:
             self.calculate_total()
         #ME QUEDE AQUI PARA ARREGLAR CUANDO SE BUSCA Y SE AÑADE UN ARTICULO NUEVO EL PRECIO SEA LA SUMA DEL TOTAL QUE YA HABIA
         #INTENTAR HACERLO BUSCANDO SI YA HAY UNA COMPRA GUARDADA CON ESE ID Y EXTRAER EL TOTAL
-        else: 
+        else:
+            print("NO EN TOTAL EXISTENTE") 
             compra_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
             if compra_existente:
+                print("EN COMPRA EXISTENTE")
+                print("arreglo d los precios:", self.precios)   
+                #osea esto
                 total_existente = compra_existente[3]
-                subtotal_articulo = total_existente + (precio_unitario * cantidad)
+                subtotal_articulo = precio_unitario * cantidad #beamos
                 print("Subtotal articulo:", subtotal_articulo)
                 self.precios.append({'subtotal': subtotal_articulo})
-                
+                #VA A SER ALGO D Q TENGO Q LIMPIAR EL ARREGLO D LOS PRESIOS
                 self.calculate_total()
             else:
+                print("NO EN COMPRA EXISTENTE")
+                print("arreglo d los precios:", self.precios)
                 cantidad = int(self.ent_cantidad.get())
                 subtotal_articulo = precio_unitario * cantidad
                 self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
@@ -3298,11 +3332,53 @@ class CompraApp:
         self.enable_buttons([self.btn_new])
     
     def calculate_total(self):
-        subtotal_total = sum(item['subtotal'] for item in self.precios)
+        #AQUI ES ONDE CALCULO CUANDO COMPRO DONDE ROBO
+        print("Precios:", self.precios) #OSEA SUPONGAMOS 24 PESOS SI SON 2 COCAS AQUI SERIA MOSTRAR CMO [12, 12]
+        subtotal_total = sum(item['subtotal'] for item in self.precios) #BNO MAS BN AQUI ES LA SUMA
+        print("Subtotal total:", subtotal_total) 
         iva = subtotal_total * 0.16
         total = subtotal_total + iva
+    
+        print("total:", total)  
         
         compra_id = self.ent_compra_id.get()
+        
+        self.ent_subtotal.config(state="normal")
+        self.ent_total.config(state="normal")
+        self.ent_iva.config(state="normal")
+
+        self.ent_subtotal.delete(0, tk.END)
+        self.ent_subtotal.insert(0, f"{subtotal_total:.2f}")
+
+        self.ent_iva.delete(0, tk.END)
+        self.ent_iva.insert(0, f"{iva:.2f}")
+
+        self.ent_total.delete(0, tk.END)
+        self.ent_total.insert(0, f"{total:.2f}")
+        
+        self.db.update_total_in_compra(compra_id, total)
+
+        self.ent_subtotal.config(state="disabled")
+        self.ent_iva.config(state="disabled")
+        self.ent_total.config(state="disabled")
+
+    def calculate_total_restar(self, diferencia):
+        total_existente = self.db.search_compra_by_id(self.ent_compra_id.get()) 
+        
+        print("Precios:", self.precios) #OSEA SUPONGAMOS 24 PESOS SI SON 2 COCAS AQUI SERIA MOSTRAR CMO [12, 12]
+        subtotal_total = sum(item['subtotal'] for item in self.precios) #BNO MAS BN AQUI ES LA SUMA
+        print("Subtotal total:", subtotal_total) 
+        iva = subtotal_total * 0.16
+        total_iva = subtotal_total + iva
+        total = total_existente[3] - total_iva
+    
+        print("total:", total)  
+        
+        articulo_id = self.db.search_articulo_by_name(self.combo_articulo.get())
+        compra_id = self.ent_compra_id.get()
+        
+        self.db.update_articulo_stock(articulo_id[0], -diferencia)
+        self.db.update_articulo_venta_stock_delete(articulo_id[0], -diferencia)
         
         self.ent_subtotal.config(state="normal")
         self.ent_total.config(state="normal")
@@ -3437,6 +3513,7 @@ class CompraApp:
             self.actual_stock = stock[3] 
 
     def edit(self):
+        
         if not self.validate_fields():
             return
                
@@ -3474,16 +3551,23 @@ class CompraApp:
         total_existente = self.db.search_compra_by_id(self.ent_compra_id.get())
         print("Total devuelto de compras:", total_existente)
         if total_existente:
+            print("EN TOTAL EXISTENTE DE EDITAR")
             total = total_existente[3]
             print("Total existente:", total)            
             if cantidad_actual < cantidad_en_bd:
+                
+                print("SI QUIERO QUITAR") 
                 diferencia_cantidades = cantidad_en_bd - cantidad_actual
-                subtotal_articulo = total - (precio_unitario * (-1 * diferencia_cantidades))
+                
+                subtotal_articulo = precio_unitario * (diferencia_cantidades)
                 print("Subtotal articulo:", subtotal_articulo)
-                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO  
-                self.calculate_total() 
-            else:            
-                subtotal_articulo = total + (precio_unitario * diferencia_cantidades)
+                self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
+                print("arreglos de precios", self.precios)  
+                self.calculate_total_restar(diferencia_cantidades) 
+        #:(
+            else:
+                print("NO QUIERO QUITAR (ANADIR)")           
+                subtotal_articulo = (precio_unitario * diferencia_cantidades)
                 self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
                 print("Subtotal articulo en else:", subtotal_articulo)  
                 self.calculate_total()
