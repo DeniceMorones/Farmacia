@@ -505,7 +505,20 @@ class DBManager:
         else:
             return max_id + 1
         
-
+    def get_detalle_venta_by_venta_articulo(self, venta_id, articulo_id):
+        query = """
+        SELECT det_id_venta, folio_venta, articulo_id, cantidad, cliente_id, puntos
+        FROM det_venta
+        WHERE folio_venta = %s AND articulo_id = %s
+        """
+        values = (venta_id, articulo_id)
+        try:
+            self.cursor.execute(query, values)
+            result = self.cursor.fetchone()
+            return result
+        except Exception as e:
+            print(f"Error al obtener detalle de venta por venta_id y articulo_id: {e}")
+            return None
     
     def add_venta_detalle(self, ventaDetail):
         articulo_name = self.get_articulo_name_by_id(ventaDetail['articulo_id'])
@@ -2647,9 +2660,7 @@ class VentaApp:
         if not articulo:
             messagebox.showerror("Error", "Articulo no encontrado.")
             return
-
-        
-        
+     
         articulo_id = self.db.search_articulo_by_name(articulo_nombre)
         puntos_articulo = self.db.search_articulo_by_id(articulo_id[0])
         cliente_id = self.db.search_customer_by_name(cliente_name)
@@ -2858,6 +2869,45 @@ class VentaApp:
        
         cantidad_actual = int(self.ent_cantidad.get())
         
+        puntos_por_articulo = articulo[5] 
+        
+        detalle_existente_bd = self.db.get_detalle_venta_by_venta_articulo(venta_id, articulo_id)
+        
+        if not detalle_existente_bd:
+            messagebox.showerror("Error", "No se encontró el detalle de venta para este artículo en esta venta.")
+            return
+
+        cantidad_en_bd = detalle_existente_bd[3]
+        puntos_otorgados_en_bd = detalle_existente_bd[5] 
+        
+        print(f"Cantidad en BD: {cantidad_en_bd}, Cantidad en UI: {cantidad_actual}")
+        print(f"Puntos otorgados en BD: {puntos_otorgados_en_bd}")
+
+        diferencia_cantidades = cantidad_actual - cantidad_en_bd
+        print(f"Diferencia de cantidades: {diferencia_cantidades}")
+        
+       
+        puntos_a_ajustar = puntos_por_articulo * diferencia_cantidades
+        print(f"Puntos a ajustar (puntos_por_articulo * diferencia_cantidades): {puntos_a_ajustar}")
+        
+        if puntos_a_ajustar != 0: 
+            puntos_actuales_cliente = self.db.get_cliente_puntos(cliente_id[0])
+            if puntos_actuales_cliente is not None:
+                puntos_actuales_cliente = int(puntos_actuales_cliente) if puntos_actuales_cliente is not None else 0
+                nuevos_puntos_cliente = puntos_actuales_cliente + puntos_a_ajustar 
+                if nuevos_puntos_cliente < 0:
+                    nuevos_puntos_cliente = 0 
+
+                cliente_info_para_update = self.db.search_customer_by_id(cliente_id[0])
+                if cliente_info_para_update:
+                     cliente_name_para_update = cliente_info_para_update[2]
+                     self.db.update_cliente_puntos(cliente_name_para_update, puntos_a_ajustar)
+                     print(f"Puntos del cliente {cliente_name_para_update} ajustados en {puntos_a_ajustar}.")
+                else:
+                     print(f"Advertencia: No se encontró información del cliente con ID {cliente_id[0]} para ajustar puntos.")
+            else:
+                 print(f"Advertencia: No se encontraron puntos para el cliente con ID {cliente_id[0]} para ajustar puntos.")
+             
         print("Cantidad actual:", cantidad_actual)
         detalle_encontrado = self.db.get_venta_detalle_by_articulo(articulo[0])
         print("Detalle encontrado:", detalle_encontrado)
