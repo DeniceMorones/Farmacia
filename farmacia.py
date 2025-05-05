@@ -770,27 +770,44 @@ class DBManager:
         return detalle
     
     def update_compra_detalle(self, compra_id, articulo_id, cantidad):
-        query = "UPDATE det_compra SET cantidad = %s WHERE folio_compra = %s AND articulo_id = %s"
-        values = (cantidad, compra_id, articulo_id)
-        self.cursor.execute(query, values)
-        self.conn.commit()
-        
         cantidad_nueva = int(cantidad)
-        
-        venta_stock = self.search_articulo_venta_stock_by_id(articulo_id)
-        print("ARTICULO EXISTENTE EN UPDATE", venta_stock)
-        if venta_stock:
-            print("UPDATE COMPRA DETALLE")
-            cantidad_existente = venta_stock[0]
-            print("Cantidad existente en update", cantidad_existente)
-            diferencia = cantidad_nueva - cantidad_existente
-            print("Cantidad existente en update", cantidad_existente)
-            nuevo_stock = diferencia + cantidad_existente
-            print("Nuevo stock en update", nuevo_stock)
-            query = "UPDATE articulo_stock SET cantidad = %s WHERE articulo_id = %s"
-            values = (nuevo_stock, articulo_id)
-            self.cursor.execute(query, values)
-            messagebox.showinfo("Éxito", "Stock actualizado con éxito en update.")
+
+        # 1. Obtener la cantidad anterior del detalle de compra
+        query_get_old_quantity = "SELECT cantidad FROM det_compra WHERE folio_compra = %s AND articulo_id = %s"
+        self.cursor.execute(query_get_old_quantity, (compra_id, articulo_id))
+        result = self.cursor.fetchone()
+
+        if result:
+            cantidad_anterior = result[0]
+            print(f"Cantidad anterior en det_compra: {cantidad_anterior}")
+            print(f"Cantidad nueva ingresada: {cantidad_nueva}")
+
+            # 2. Actualizar la cantidad en det_compra
+            query_update_det_compra = "UPDATE det_compra SET cantidad = %s WHERE folio_compra = %s AND articulo_id = %s"
+            values_update_det_compra = (cantidad_nueva, compra_id, articulo_id)
+            self.cursor.execute(query_update_det_compra, values_update_det_compra)
+            self.conn.commit()
+
+            # 3. Calcular la diferencia y actualizar el stock de VENTA (articulo_stock)
+            diferencia = cantidad_nueva - cantidad_anterior
+            print(f"Diferencia de cantidad: {diferencia}")
+
+            if diferencia != 0:
+                # Si la diferencia es positiva, se compraron más. Si es negativa, se compraron menos.
+                # Debemos sumar la diferencia al stock de venta.
+                query_update_venta_stock = "UPDATE articulo_stock SET cantidad = cantidad + %s WHERE articulo_id = %s"
+                values_update_venta_stock = (diferencia, articulo_id)
+                self.cursor.execute(query_update_venta_stock, values_update_venta_stock)
+                self.conn.commit()
+                messagebox.showinfo("Éxito", f"Stock de venta actualizado con éxito ({'sumado' if diferencia > 0 else 'restado'} {abs(diferencia)}).")
+
+            # 4. Calcular la diferencia y actualizar el stock de COMPRA (det_articulo)
+            # Debemos sumar la diferencia al stock de compra.
+            # Llama a tu método update_articulo_stock, pero asegúrate de que sume la diferencia.
+            self.update_articulo_stock(articulo_id, diferencia) # Este método resta, vamos a corregirlo para sumar
+
+        else:
+            messagebox.showerror("Error", "No se encontró el detalle de compra para actualizar.")
         
     def search_compra_detalle_by_folio(self, folio_compra):
         query = "SELECT * FROM det_compra WHERE folio_compra = %s"
@@ -3263,7 +3280,8 @@ class CompraApp:
             cantidad_existente = total_existente[3]
             print("Cantidad existente:", cantidad_existente)
             cantidad = int(self.ent_cantidad.get())
-            diferencia = cantidad + cantidad_existente
+            diferencia = cantidad 
+            print("diferencia", diferencia)
             subtotal_articulo = precio_unitario * diferencia
             print("Subtotal articulo:", subtotal_articulo)
             self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
@@ -3320,7 +3338,10 @@ class CompraApp:
         
         compraDetail_existente = self.db.search_compra_detalle_by_id(compraDetail['folio_compra'], compraDetail['articulo_id'])
         if compraDetail_existente:
-            self.db.update_compra_detalle(compraDetail["folio_compra"],compraDetail["articulo_id"], compraDetail['cantidad'])
+            cantidad_existente = total_existente[3]
+            print("cantidad existente: ", cantidad_existente)
+            nueva_cantidad = cantidad_existente + cantidad
+            self.db.update_compra_detalle(compraDetail["folio_compra"],compraDetail["articulo_id"], nueva_cantidad)
         else:
             compraResponse = self.db.add_compra_detalle(compraDetail)
             self.selected_articulos.append((compraResponse['folio_compra'], compraResponse['articulo_name'], compraResponse['cantidad']))
