@@ -438,12 +438,14 @@ class DBManager:
         self.conn.commit()
     
     def save_venta(self, venta):
+        
+        cliente_id = self.search_customer_by_name(venta['cliente'])
         #valor = articulo['descuento'].strip()
         #descuento = int(valor) if valor else None
         print("TOTAL DE LA VENTA",venta["total"])   
         user_id = self.search_user_by_username(venta['usuario'])
-        query = "INSERT INTO ventas (folio_venta, user_id, fecha, total) VALUES (%s, %s, %s, %s)"
-        values = (venta['venta_id'], user_id[0], venta['fecha'], venta['total'])
+        query = "INSERT INTO ventas (folio_venta, user_id, fecha, total, cliente_id) VALUES (%s, %s, %s, %s, %s)"
+        values = (venta['venta_id'], user_id[0], venta['fecha'], venta['total'], cliente_id[0])
         self.cursor.execute(query, values)
         self.conn.commit()
     
@@ -2437,6 +2439,13 @@ class VentaApp:
         self.ent_total.config(state="disabled")
 
     def quitar_detalle(self):
+        cliente_name = self.combo_cliente.get()
+        cliente_existente = self.db.search_cliente_by_venta(cliente_name)
+        articulo_nombre = self.combo_articulo.get()
+        articulo = self.db.search_articulo_by_name(articulo_nombre)
+      
+         
+        
         if not self.selected_articulos:
             messagebox.showwarning("No hay articulos para quitar.")
             return
@@ -2447,24 +2456,42 @@ class VentaApp:
             #articulo_id = self.db.search_articulo_by_name(last_detail[2])
             #print("Articulo ID:", articulo_id[0])
             
-            total_existente = self.db.search_compra_detalle_by_id(self.ent_compra_id.get(), last_detail[2])
+            puntos_detalle = last_detail[5]
+            
+            total_existente = self.db.search_venta_by_id(self.ent_venta_id.get())
             print("Total existente:", total_existente[3])
             
-            success = self.db.delete_compra_detalle(
-                last_detail[0],  # folio_compra
+            success = self.db.delete_venta_detalle(
+                last_detail[1],  # folio_venta
                 last_detail[2],  # articulo_id
-                last_detail[3],  # cantidad
+                last_detail[3], # cantidad
+                last_detail[4], # cliente_id
+                last_detail[5] # puntos
             )
             
-            precio_unitario = self.db.search_articulo_by_id(last_detail[2])
-            subtotal_total = precio_unitario[3] * last_detail[3]
-            iva = subtotal_total * 0.16
-            total = subtotal_total + iva
+            if cliente_existente:
+                precio_venta = self.db.search_articulo_by_id(last_detail[2])
+                descuento = int(precio_venta[3]) * (articulo[5] / 100)
+                
+                subtotal_total = (precio_venta[3] * last_detail[3])- descuento
+                print("subtotal total: ", subtotal_total)
+                iva = subtotal_total * 0.16
+                print("IVA: ", iva)
+                total = subtotal_total + iva
+                total_actualizado = total_existente[3] - total
             
-            total_actualizado = total_existente[3] - total
-            print("Total actualizado:", total_actualizado)
+            else:
+                precio_unitario = self.db.search_articulo_by_id(last_detail[2])
+                subtotal_total = precio_unitario[3] * last_detail[3]
+                print("subtotal total: ", subtotal_total)
+                iva = subtotal_total * 0.16
+                print("IVA: ", iva)
+                total = subtotal_total + iva
+                
+                
+                print("Total actualizado:", total_actualizado)
             
-            self.db.update_total_in_compra(self.ent_compra_id.get(), total_actualizado)
+            self.db.update_total_in_venta(self.ent_venta_id.get(), total_actualizado)
             
             self.ent_total.config(state="normal")
             self.ent_total.delete(0, tk.END)
@@ -2472,10 +2499,32 @@ class VentaApp:
             self.ent_total.config(state="disabled")             
             
             if success:
+                venta_principal = self.db.search_venta_by_id(self.ent_venta_id.get())
+                if venta_principal:
+                    
+                    cliente_id_venta = cliente_existente[0]
+
+               
+                    puntos_actuales_cliente = self.db.get_cliente_puntos(cliente_id_venta)
+
+                    if puntos_actuales_cliente is not None:
+                        puntos_a_restar = int(puntos_detalle) if puntos_detalle is not None else 0
+                        nuevos_puntos_cliente = puntos_actuales_cliente - puntos_a_restar
+
+                        if nuevos_puntos_cliente < 0:
+                           nuevos_puntos_cliente = 0
+
+                      
+                        cliente_info = self.db.search_customer_by_id(cliente_id_venta)
+                        if cliente_info:
+                            cliente_name_para_update = cliente_info[2]
+                            self.db.update_cliente_puntos(cliente_name_para_update, -puntos_a_restar) 
+
+                
                 self.selected_articulos.pop()
                 self.lbl_carrito_articulos.delete(tk.END)
                 
-                self.db.update_articulo_stock(last_detail[2], -last_detail[3])
+                #self.db.update_articulo_stock(last_detail[2], -last_detail[3])
                 self.db.update_articulo_venta_stock_delete(last_detail[2], last_detail[3])
                               
                 messagebox.showinfo("Éxito", "Detalle eliminado correctamente")
@@ -2524,11 +2573,15 @@ class VentaApp:
                 puntos_cliente = cliente_existente[5]
                 if puntos_cliente >= 50:
                         descuento = precio_venta * (articulo[5] / 100)
+                        print("Descuento: ", descuento)
                         #subtotal_articulo = precio_venta - descuento 
                         cantidad_existente = total_existente[3]
                         cantidad = int(self.ent_cantidad.get())
-                        diferencia = cantidad - cantidad_existente
+                        print("cantidad: ", cantidad)
+                        diferencia = cantidad 
+                        print("diferencia: ", diferencia)
                         subtotal_articulo = (precio_venta * diferencia) - descuento
+                        print("subtotal: ", subtotal_articulo)
                         self.precios.append({'subtotal': subtotal_articulo})#HACER OTRO ARREGLO
                     
                         self.calculate_total()
@@ -2555,7 +2608,7 @@ class VentaApp:
             
             if cliente_existente:
                 puntos_cliente = cliente_existente[5]
-                if puntos_cliente >= 100:
+                if puntos_cliente >= 50:
                     descuento = precio_venta * (articulo[5] / 100)
                     cantidad = int(self.ent_cantidad.get())
                     subtotal_articulo = (precio_venta * cantidad) - descuento
@@ -2615,10 +2668,11 @@ class VentaApp:
             cantidad_existente = total_existente[3]
             print("cantidad existente: ", cantidad_existente)
             nueva_cantidad = cantidad_existente + cantidad
+            print("nueva cantidad")
             self.db.update_venta_detalle(ventaDetail["folio_venta"],ventaDetail["articulo_id"], nueva_cantidad, ventaDetail['cliente_id'], ventaDetail['puntos'])
             self.selected_articulos.append((ventaDetail['folio_venta'], venta["articulo"], ventaDetail['cantidad'], venta['cliente'], ventaDetail['puntos']))
             self.lbl_carrito_articulos.insert(tk.END, f"{"Folio detalle:", venta_id} {"Folio venta:", venta['venta_id']} {"Articulo:", ventaDetail['articulo_id']} {"Cantidad:", ventaDetail['cantidad']} {"Cliente:", ventaDetail['cliente_id']} {"Puntos:", ventaDetail['puntos']}")
-
+            self.db.update_articulo_venta_stock_delete(ventaDetail["articulo_id"], -cantidad)
         else:
             ventaResponse = self.db.add_venta_detalle(ventaDetail)
             self.selected_articulos.append((ventaResponse['folio_venta'], ventaResponse['articulo_name'], ventaResponse['cantidad'], ventaResponse['cliente_name'], ventaResponse['puntos']))
@@ -2680,10 +2734,12 @@ class VentaApp:
         if not venta:
             messagebox.showinfo("Error", "Venta no encontrada.")
             return
-        cliente_id = self.db.get_venta_detalle(venta[0])
-        print("DETALLE DE VENTA:", cliente_id)
-        print("CLIENTE ID:", cliente_id[0][4])
-        cliente_name = self.db.search_customer_by_id(cliente_id[0][4])  
+        cliente_id = self.db.search_venta_by_id(venta[0])
+        if cliente_id:
+            print("DETALLE DE VENTA:", cliente_id)
+            print("CLIENTE ID:", cliente_id[4])
+            cliente_name = self.db.search_customer_by_id(cliente_id[4])  
+        
         user_name = self.db.search_user_by_id(venta[1])
         
         if venta:
@@ -2714,6 +2770,7 @@ class VentaApp:
             
             self.ent_venta_id.insert(0, venta[0])  # venta_id
             self.ent_usuario.insert(0, user_name[1])   # usuario
+            
             self.combo_cliente.insert(0, cliente_name[2])  # cliente
             self.ent_fecha.insert(0, venta[2]) # fecha
             self.ent_total.insert(0, venta[3]) # total
@@ -2896,7 +2953,33 @@ class VentaApp:
             messagebox.showerror("Error", "Debe ingresar un ID de venta.")
             return
 
-        detalles_venta = self.db.get_venta_detalle(venta_id)  
+        detalles_venta = self.db.get_venta_detalle(venta_id) 
+        
+        if messagebox.askyesno("Confirmación", "¿Estás seguro de que desea eliminar esta venta y todos los datos asociados?"):
+            if detalles_venta:
+                
+                venta_principal = self.db.search_venta_by_id(venta_id)
+                if venta_principal:
+                     
+                    cliente_id_venta = detalles_venta[0][4] 
+
+                    puntos_actuales_cliente = self.db.get_cliente_puntos(cliente_id_venta)
+
+                    if puntos_actuales_cliente is not None:
+                        total_puntos_a_restar = sum(int(detalle[5]) if detalle[5] is not None else 0 for detalle in detalles_venta)
+                        nuevos_puntos_cliente = puntos_actuales_cliente - total_puntos_a_restar
+                        if nuevos_puntos_cliente < 0:
+                           nuevos_puntos_cliente = 0
+
+                        cliente_info = self.db.search_customer_by_id(cliente_id_venta)
+                        if cliente_info:
+                            cliente_name_para_update = cliente_info[2]
+                            self.db.update_cliente_puntos(cliente_name_para_update, -total_puntos_a_restar) # Pasar los puntos a restar como negativo
+                            print(f"Puntos del cliente {cliente_name_para_update} ajustados por eliminación de venta.")
+                        else:
+                             print(f"Advertencia: No se encontró información del cliente con ID {cliente_id_venta} para ajustar puntos.")
+                    else:
+                        print(f"Advertencia: No se encontraron puntos para el cliente con ID {cliente_id_venta} para ajustar puntos.") 
 
         if detalles_venta:
             for detalle in detalles_venta:
