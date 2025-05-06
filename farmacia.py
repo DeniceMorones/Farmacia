@@ -2393,17 +2393,27 @@ class VentaApp:
         if user[3] == "cajero":
             self.btn_edit.config(state="disabled")
             self.btn_delete.config(state="disabled")
-
+            self.btn_cancel.config(state="disabled")
+            
         self.btn_new.config(state="normal")
         self.btn_search.config(state="normal")
         self.btn_insert.config(state="normal")
-        self.btn_cancel.config(state="normal")
+        #self.btn_cancel.config(state="normal")
 
     def new_venta(self):
+        print("user perfil", self.username)
+        user = self.db.search_user_by_username(self.username)
+        print("user", user[3])
+        
         self.clear_entries()
         self.enable_entries()
-        self.enable_buttons([self.btn_insert, self.btn_cancel])
-        self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete])
+        
+        if user[3] == "cajero":
+            self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete, self.btn_cancel])
+        else:
+        
+            self.enable_buttons([self.btn_insert, self.btn_cancel])
+            self.disable_buttons([self.btn_new, self.btn_edit, self.btn_delete])
         
         self.current_venta_id = self.db.get_next_venta_id()
         self.ent_venta_id.insert(0, self.current_venta_id)
@@ -2412,6 +2422,9 @@ class VentaApp:
         self.ent_fecha.delete(0, END)
         self.ent_fecha.insert(0, today)
         self.ent_fecha.config(state="disabled")
+        
+        
+        
 
     def insert_detalle(self):
         articulo_nombre = self.combo_articulo.get()
